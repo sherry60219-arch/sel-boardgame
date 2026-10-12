@@ -2,15 +2,17 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- 加入 viewport-fit=cover 與 user-scalable=no 提升手機端體驗 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>情緒風暴 SEL - 線上桌遊</title>
+    
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Vue 3 -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <!-- PeerJS for P2P Networking -->
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-    <!-- Font Awesome for Icons (Action Cards) -->
+    <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
@@ -20,420 +22,466 @@
             theme: {
                 extend: {
                     colors: {
-                        uno: {
-                            red: '#ef4444',
-                            yellow: '#eab308',
-                            green: '#22c55e',
-                            blue: '#3b82f6',
-                            black: '#1f2937'
-                        }
+                        uno: { red: '#ef4444', yellow: '#eab308', green: '#22c55e', blue: '#3b82f6', black: '#1f2937' },
+                        board: '#1e293b' /* 參考截圖的深藍灰背景 */
                     },
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                    }
+                    fontFamily: { sans: ['Inter', 'sans-serif'] }
                 }
             }
         }
     </script>
 
     <style>
-        body { background-color: #064e3b; color: white; overflow: hidden; touch-action: manipulation; }
-        .game-board { background: radial-gradient(circle, #065f46 0%, #022c22 100%); }
+        body { 
+            background-color: #0f172a; 
+            color: white; 
+            margin: 0; 
+            padding: 0;
+            overscroll-behavior-y: none; /* 防止手機下拉重整 */
+        }
         
-        /* Card Styling */
+        .game-board { background-color: #1e293b; }
+        
+        /* Card Styling - 根據截圖調整比例 */
         .uno-card {
-            width: 80px;
-            height: 120px;
+            width: 72px;
+            height: 108px;
             border-radius: 8px;
-            border: 4px solid white;
+            border: 3px solid white;
             display: inline-flex;
             flex-direction: column;
-            justify-content: center;
+            justify-content: space-between;
             align-items: center;
             position: relative;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
             cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-            background-color: white; /* base for border */
+            transition: transform 0.2s, box-shadow 0.2s, margin 0.2s;
+            background-color: white;
             user-select: none;
+            flex-shrink: 0;
+            padding: 4px 0;
         }
         @media (min-width: 768px) {
-            .uno-card { width: 100px; height: 150px; border-radius: 12px; border-width: 6px; }
+            .uno-card { width: 90px; height: 135px; border-radius: 10px; border-width: 4px; padding: 6px 0; }
         }
-        .uno-card:hover:not(.disabled) { transform: translateY(-10px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5); z-index: 50; }
-        .uno-card.disabled { filter: brightness(0.6); cursor: not-allowed; }
+        .uno-card:hover:not(.disabled) { transform: translateY(-15px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5); z-index: 50; }
+        .uno-card.disabled { filter: brightness(0.5); cursor: not-allowed; }
         
         .uno-card-inner {
             width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: space-between; align-items: center;
+            position: absolute; top: 0; left: 0;
             border-radius: 4px;
-            display: flex; justify-content: center; align-items: center;
-            position: relative;
             overflow: hidden;
-        }
-        .uno-card-inner::after {
-            content: ''; position: absolute; width: 150%; height: 150%;
-            background: rgba(255,255,255,0.15); border-radius: 50%;
-            transform: rotate(-45deg);
+            padding: 4px;
         }
         
         /* Colors */
-        .card-red .uno-card-inner { background-color: #ef4444; }
-        .card-yellow .uno-card-inner { background-color: #eab308; }
-        .card-green .uno-card-inner { background-color: #22c55e; }
-        .card-blue .uno-card-inner { background-color: #3b82f6; }
-        .card-black .uno-card-inner { background-color: #1f2937; }
+        .card-red .uno-card-inner { background-color: #bd4a4a; } /* 柔和紅 */
+        .card-yellow .uno-card-inner { background-color: #d4a73f; } /* 柔和黃 */
+        .card-green .uno-card-inner { background-color: #3b9e5d; } /* 柔和綠 */
+        .card-blue .uno-card-inner { background-color: #4a7cbd; } /* 柔和藍 */
+        .card-black .uno-card-inner { background: linear-gradient(135deg, #ef4444 25%, #eab308 25%, #eab308 50%, #22c55e 50%, #22c55e 75%, #3b82f6 75%); }
         
         /* Texts & Icons */
         .card-center {
-            font-size: 3rem; font-weight: 900; color: white;
-            text-shadow: 2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
-            z-index: 10;
+            font-size: 2.2rem; font-weight: 900; color: white;
+            text-shadow: 1px 1px 0 rgba(0,0,0,0.3);
+            flex-grow: 1;
+            display: flex; align-items: center; justify-content: center;
+            margin-top: 8px;
         }
-        .card-corner {
-            position: absolute; font-size: 1.2rem; font-weight: bold; color: white;
-            text-shadow: 1px 1px 0 #000; z-index: 10;
+        .card-label {
+            font-size: 0.65rem; font-weight: bold; color: rgba(255,255,255,0.9);
+            text-align: center; width: 100%;
+            padding-bottom: 2px;
+            letter-spacing: 0.5px;
         }
-        .corner-tl { top: 4px; left: 6px; }
-        .corner-br { bottom: 4px; right: 6px; transform: rotate(180deg); }
+        @media (min-width: 768px) {
+            .card-center { font-size: 2.8rem; }
+            .card-label { font-size: 0.75rem; }
+        }
         
         .hand-container {
-            display: flex; justify-content: center;
-            gap: -40px; /* Overlap cards */
-            padding-top: 20px;
-        }
-        .hand-container > * { margin-left: -30px; }
-        .hand-container > *:first-child { margin-left: 0; }
-        
-        /* Animations */
-        .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
-        .fade-enter-from, .fade-leave-to { opacity: 0; }
-        .bounce-enter-active { animation: bounce-in 0.5s; }
-        @keyframes bounce-in {
-            0% { transform: scale(0); }
-            50% { transform: scale(1.1); }
-            100% { transform: scale(1); }
+            display: flex; 
+            gap: 8px;
+            padding: 20px 10px 10px 10px;
+            overflow-x: auto;
+            scroll-behavior: smooth;
+            -webkit-overflow-scrolling: touch; /* iOS 滑動順暢 */
         }
         
-        /* Scrollbar styling for chat/history */
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
-        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 3px; }
+        /* Scrollbar styling */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.4); border-radius: 4px; }
+        
+        .log-container {
+            scrollbar-width: thin; /* Firefox */
+        }
+
+        /* 倒數動畫 */
+        .countdown-text {
+            animation: popIn 1s infinite;
+        }
+        @keyframes popIn {
+            0% { transform: scale(0.5); opacity: 0; }
+            50% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(1); opacity: 0; }
+        }
     </style>
 </head>
-<body id="app">
+<body id="app" class="h-screen flex flex-col overflow-hidden">
 
-    <!-- Screen: Lobby -->
-    <div v-if="screen === 'lobby'" class="min-h-screen flex items-center justify-center bg-gray-900 p-4 relative overflow-hidden">
-        <div class="absolute inset-0 opacity-20 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+CjxwYXRoIGQ9Ik0yMCAwbDIwIDIwdi0yMGgtMjB6TTIwIDQwbDIwLTIwaDIwdjIweiIgZmlsbD0iI2ZmZiIgZmlsbC1vcGFjaXR5PSIwLjA1Ii8+Cjwvc3ZnPg==')]"></div>
-        <div class="bg-gray-800 p-8 rounded-2xl shadow-2xl max-w-md w-full relative z-10 border border-gray-700">
-            <h1 class="text-3xl font-extrabold text-center mb-2 text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-blue-500">情緒風暴 SEL</h1>
-            <p class="text-center text-gray-400 mb-6 text-sm">自我覺察 × 同理心 × 牌卡對決</p>
+    <div v-if="screen === 'lobby'" class="flex-1 flex items-center justify-center p-4 relative">
+        <div class="bg-gray-800 p-6 md:p-8 rounded-2xl shadow-2xl max-w-md w-full relative z-10 border border-gray-700">
+            <h1 class="text-3xl font-extrabold text-center mb-2 text-yellow-400">情緒風暴 SEL</h1>
+            <p class="text-center text-gray-400 mb-6 text-sm">自我覺察 × 同理心 × 桌遊對決</p>
             
+            <!-- 登入與建房 -->
             <div v-if="!peerId && !isConnecting" class="space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-300 mb-1">你的暱稱</label>
-                    <input v-model="playerName" type="text" maxlength="10" class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-green-500" placeholder="輸入暱稱...">
+                    <input v-model="playerName" type="text" maxlength="10" class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-yellow-500" placeholder="輸入暱稱 (必填)...">
                 </div>
-                <div class="flex gap-4 pt-2">
-                    <button @click="createRoom" :disabled="!playerName.trim()" class="flex-1 bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white font-bold py-3 px-4 rounded-lg transition">建立房間 (房主)</button>
-                </div>
+                <button @click="createRoom" :disabled="!playerName.trim()" class="w-full bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white font-bold py-3 rounded-lg transition shadow-lg">建立房間 (擔任房主)</button>
+                
                 <div class="relative flex py-2 items-center">
                     <div class="flex-grow border-t border-gray-600"></div>
-                    <span class="flex-shrink-0 mx-4 text-gray-500 text-sm">或</span>
+                    <span class="flex-shrink-0 mx-4 text-gray-500 text-sm">或加入朋友的房間</span>
                     <div class="flex-grow border-t border-gray-600"></div>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-300 mb-1">輸入房間代碼加入</label>
-                    <div class="flex gap-2">
-                        <input v-model="joinRoomId" type="text" class="flex-1 px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500 uppercase" placeholder="如: A1B2">
-                        <button @click="joinRoom" :disabled="!playerName.trim() || !joinRoomId.trim()" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold py-2 px-4 rounded-lg transition">加入</button>
-                    </div>
+                
+                <div class="flex gap-2">
+                    <input v-model="joinRoomId" type="text" class="flex-1 px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500 uppercase font-mono" placeholder="輸入房間代碼">
+                    <button @click="joinRoom" :disabled="!playerName.trim() || !joinRoomId.trim()" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold py-3 px-6 rounded-lg transition shadow-lg">加入</button>
                 </div>
             </div>
             
             <div v-else-if="isConnecting" class="text-center py-8">
-                <i class="fas fa-circle-notch fa-spin text-4xl text-green-500 mb-4"></i>
-                <p>連線中，請稍候...</p>
+                <i class="fas fa-spinner fa-spin text-4xl text-yellow-500 mb-4"></i>
+                <p class="text-gray-300">連線建立中，請稍候...</p>
+                <p class="text-xs text-gray-500 mt-2">若使用手機網路，可能需要幾秒鐘尋找節點</p>
             </div>
 
+            <!-- 等待室 (已連線) -->
             <div v-else class="space-y-4">
-                <div class="bg-gray-700 p-4 rounded-lg text-center">
-                    <p class="text-sm text-gray-300 mb-1">房間代碼 (提供給好友)</p>
-                    <h2 class="text-3xl font-mono font-bold text-white tracking-widest">{{ roomId }}</h2>
-                    <button @click="copyRoomId" class="mt-2 text-xs text-green-400 hover:text-green-300"><i class="fas fa-copy"></i> 複製代碼</button>
+                <div class="bg-gray-900 p-4 rounded-lg text-center border border-gray-700">
+                    <p class="text-sm text-gray-400 mb-1">房間代碼 (請分享給朋友)</p>
+                    <h2 class="text-4xl font-mono font-bold text-white tracking-widest">{{ roomId }}</h2>
+                    <button @click="copyRoomId" class="mt-3 text-sm bg-gray-700 hover:bg-gray-600 px-4 py-1 rounded-full transition"><i class="fas fa-copy"></i> 點擊複製</button>
                 </div>
                 
                 <div>
-                    <h3 class="font-medium text-gray-300 mb-2 border-b border-gray-600 pb-1">已加入玩家 ({{ players.length }}/6)</h3>
-                    <ul class="space-y-2 mb-4 max-h-40 overflow-y-auto">
-                        <li v-for="p in players" :key="p.id" class="flex justify-between items-center bg-gray-700 p-2 rounded">
+                    <div class="flex justify-between items-end mb-2 border-b border-gray-700 pb-1">
+                        <h3 class="font-medium text-gray-300">玩家列表 ({{ players.length }}/6)</h3>
+                    </div>
+                    <ul class="space-y-2 mb-4 max-h-48 overflow-y-auto">
+                        <li v-for="p in players" :key="p.id" class="flex justify-between items-center bg-gray-700 p-3 rounded-lg">
                             <div class="flex items-center gap-2">
-                                <span v-if="p.isHost" class="text-yellow-400 text-xs" title="房主"><i class="fas fa-crown"></i></span>
-                                <span>{{ p.name }}</span>
-                                <span v-if="p.id === myId" class="text-xs bg-gray-600 px-1 rounded">(你)</span>
+                                <span v-if="p.isHost" class="text-yellow-400 text-sm" title="房主"><i class="fas fa-crown"></i></span>
+                                <span class="font-bold text-white">{{ p.name }}</span>
+                                <span v-if="p.id === myId" class="text-xs bg-gray-600 px-2 py-0.5 rounded text-gray-300">(你)</span>
                             </div>
-                            <span :class="p.isReady ? 'text-green-400' : 'text-gray-400'"><i class="fas" :class="p.isReady ? 'fa-check-circle' : 'fa-hourglass-half'"></i> {{ p.isReady ? '已準備' : '準備中' }}</span>
+                            <span v-if="!p.isHost" :class="p.isReady ? 'text-green-400 font-bold' : 'text-gray-400 text-sm'"><i class="fas" :class="p.isReady ? 'fa-check-circle' : 'fa-clock'"></i> {{ p.isReady ? '已準備' : '準備中' }}</span>
                         </li>
                     </ul>
                 </div>
                 
-                <div class="flex gap-2">
-                    <button @click="toggleReady" class="flex-1 font-bold py-3 px-4 rounded-lg transition" :class="isReady ? 'bg-orange-600 hover:bg-orange-500' : 'bg-green-600 hover:bg-green-500 text-white'">
-                        {{ isReady ? '取消準備' : '準備開始!' }}
+                <!-- 房主控制面板 -->
+                <div v-if="isHost" class="pt-2">
+                    <button @click="forceStart" :disabled="!canHostStart" class="w-full font-bold py-3 px-4 rounded-lg transition shadow-lg text-lg" :class="canHostStart ? 'bg-yellow-500 hover:bg-yellow-400 text-black animate-pulse' : 'bg-gray-600 text-gray-400 cursor-not-allowed'">
+                        {{ players.length < 2 ? '等待玩家加入...' : '開始遊戲 !' }}
+                    </button>
+                    <p class="text-xs text-center text-gray-500 mt-2">需至少2人，且所有玩家皆按下準備才能開始</p>
+                </div>
+                
+                <!-- 玩家控制面板 -->
+                <div v-else class="pt-2">
+                    <button @click="toggleReady" class="w-full font-bold py-3 px-4 rounded-lg transition shadow-lg text-lg" :class="isReady ? 'bg-orange-600 hover:bg-orange-500 text-white' : 'bg-green-600 hover:bg-green-500 text-white animate-pulse'">
+                        {{ isReady ? '取消準備' : '我準備好了' }}
                     </button>
                 </div>
-                <p v-if="isHost" class="text-xs text-center text-gray-400">當所有人準備完畢(至少3人)，遊戲將自動開始。</p>
             </div>
         </div>
     </div>
 
-    <!-- Screen: Game Board -->
-    <div v-else-if="screen === 'playing'" class="min-h-screen game-board flex flex-col relative pb-4">
+    <div v-else-if="gameState.status === 'COUNTDOWN'" class="flex-1 flex flex-col items-center justify-center game-board relative z-50">
+        <h2 class="text-2xl text-gray-300 mb-4">遊戲即將開始</h2>
+        <div class="text-9xl font-black text-yellow-400 countdown-text drop-shadow-[0_0_15px_rgba(250,204,21,0.8)]">
+            {{ countdownValue }}
+        </div>
+    </div>
+
+    <div v-else-if="screen === 'playing'" class="flex-1 flex flex-col game-board relative">
         
-        <!-- Header Info -->
-        <div class="flex justify-between items-center p-3 bg-black/30 backdrop-blur-sm border-b border-white/10 z-20">
-            <div class="flex gap-4 text-sm font-semibold text-gray-300">
-                <span><i class="fas fa-clock text-green-400"></i> 全局剩餘: {{ formatTime(globalTimeRemaining) }}</span>
-                <span class="text-xs px-2 py-1 bg-gray-800 rounded">房碼: {{ roomId }}</span>
-            </div>
-            <!-- Current Color Indicator -->
-            <div class="flex items-center gap-2">
-                <span class="text-sm font-bold">當前顏色:</span>
-                <div class="w-6 h-6 rounded-full border-2 border-white shadow" :style="{ backgroundColor: getColorCode(currentColor) }"></div>
+        <!-- 頂部資訊列 -->
+        <div class="flex justify-between items-center px-4 py-2 bg-gray-900 border-b border-gray-700 z-20 shrink-0">
+            <div class="text-yellow-400 font-bold text-lg hidden md:block">情緒風暴 SEL</div>
+            <div class="flex gap-4 text-xs sm:text-sm font-semibold text-gray-300 items-center">
+                <span><i class="fas fa-clock text-gray-400"></i> 回合剩餘: <span :class="{'text-red-400': turnTimeRemaining <= 5}">{{ turnTimeRemaining }}s</span></span>
+                <div class="flex items-center gap-1 bg-gray-800 px-2 py-1 rounded">
+                    <span>當前顏色:</span>
+                    <div class="w-4 h-4 rounded-full border border-gray-500" :style="{ backgroundColor: getColorCode(currentColor) }"></div>
+                </div>
+                <span class="bg-gray-800 px-2 py-1 rounded text-gray-400 hidden sm:block">方向: <i class="fas" :class="gameState.direction === 1 ? 'fa-redo' : 'fa-undo'"></i></span>
             </div>
         </div>
 
-        <!-- Main Game Area -->
-        <div class="flex-1 flex flex-col justify-between relative overflow-hidden">
+        <!-- 中間遊戲區域 (彈性高度) -->
+        <div class="flex-1 flex flex-col relative overflow-hidden p-2 sm:p-4 gap-4">
             
-            <!-- Other Players (Top Area) -->
-            <div class="flex justify-center gap-2 sm:gap-6 pt-4 px-2 flex-wrap">
-                <div v-for="p in otherPlayers" :key="p.id" class="flex flex-col items-center bg-black/20 p-2 rounded-xl border border-white/10 transition" :class="{'ring-2 ring-green-400 bg-green-900/30': p.id === gameState.currentPlayerId}">
-                    <div class="flex items-center gap-1 mb-1">
-                        <span class="font-bold text-sm truncate max-w-[80px]">{{ p.name }}</span>
+            <!-- 上方：其他玩家狀態 -->
+            <div class="flex justify-center gap-3 sm:gap-6 flex-wrap shrink-0">
+                <div v-for="p in otherPlayers" :key="p.id" class="flex flex-col items-center bg-gray-800/80 px-3 py-2 rounded-xl border border-gray-700 transition" :class="{'ring-2 ring-yellow-400 bg-gray-700 scale-105': p.id === gameState.currentPlayerId}">
+                    <span class="font-bold text-xs sm:text-sm truncate max-w-[80px] text-gray-200">{{ p.name }}</span>
+                    <div class="bg-gray-900 text-gray-300 text-[10px] sm:text-xs px-2 py-0.5 rounded-full mt-1 border border-gray-700">
+                        {{ p.cardCount }} 張牌
                     </div>
-                    <div class="flex gap-[-5px]">
-                        <!-- Card backs -->
-                        <div class="w-8 h-12 bg-red-600 rounded border-2 border-white shadow flex items-center justify-center -ml-3 first:ml-0" v-for="n in Math.min(p.cardCount, 5)" :key="n">
-                            <span class="text-[8px] font-bold text-yellow-300 rotate-[-45deg]">SEL</span>
-                        </div>
-                        <span v-if="p.cardCount > 5" class="ml-1 text-xs font-bold">+{{p.cardCount - 5}}</span>
-                    </div>
-                    <div v-if="p.hasCalledCalm" class="text-[10px] bg-green-500 text-white px-1 mt-1 rounded">已平靜</div>
+                    <div v-if="p.hasCalledCalm" class="text-[10px] bg-green-600 text-white px-1.5 mt-1 rounded shadow">已平靜</div>
                 </div>
             </div>
 
-            <!-- Center Table -->
-            <div class="flex-1 flex items-center justify-center gap-8 relative z-10">
+            <!-- 中央：牌堆與對話紀錄框 -->
+            <div class="flex-1 flex flex-col md:flex-row items-center justify-center gap-4 sm:gap-8 min-h-[200px]">
                 
-                <!-- Deck -->
-                <div class="relative cursor-pointer hover:scale-105 transition" @click="drawCard">
-                    <!-- Stack effect -->
-                    <div class="w-[80px] h-[120px] md:w-[100px] md:h-[150px] bg-red-700 rounded-lg border-4 border-white absolute top-2 left-2 flex items-center justify-center brightness-75"><span class="font-bold text-yellow-300 rotate-[-45deg] opacity-50">SEL</span></div>
-                    <div class="w-[80px] h-[120px] md:w-[100px] md:h-[150px] bg-red-600 rounded-lg border-4 border-white relative shadow-xl flex items-center justify-center">
-                        <span class="font-extrabold text-2xl md:text-3xl text-yellow-300 rotate-[-45deg] drop-shadow-md">SEL</span>
+                <!-- 左/上：牌堆區 -->
+                <div class="flex gap-4 sm:gap-8 items-center justify-center shrink-0">
+                    <!-- 抽牌堆 -->
+                    <div class="flex flex-col items-center gap-2 cursor-pointer hover:scale-105 transition" @click="drawCard">
+                        <span class="text-xs text-gray-400 font-bold tracking-widest">抽牌堆</span>
+                        <div class="w-[64px] h-[96px] sm:w-[80px] sm:h-[120px] bg-gray-800 rounded-lg border-2 border-gray-600 flex flex-col items-center justify-center relative shadow-lg">
+                            <div class="w-8 h-8 rounded-full bg-red-800 border-2 border-white/50 mb-1"></div>
+                            <span class="text-xs font-bold text-white/80">抽牌</span>
+                        </div>
                     </div>
-                    <div v-if="isMyTurn" class="absolute -bottom-8 left-1/2 -translate-x-1/2 text-sm font-bold text-yellow-400 bg-black/50 px-2 rounded whitespace-nowrap animate-pulse">點擊抽牌</div>
-                </div>
 
-                <!-- Discard Pile -->
-                <div class="relative">
-                    <div v-if="discardPileTop" class="uno-card shadow-2xl" :class="getCardClass(discardPileTop)">
-                        <div class="uno-card-inner">
-                            <span class="card-corner corner-tl" v-html="getCardDisplay(discardPileTop, true)"></span>
-                            <span class="card-center" v-html="getCardDisplay(discardPileTop)"></span>
-                            <span class="card-corner corner-br" v-html="getCardDisplay(discardPileTop, true)"></span>
+                    <!-- 當前出牌堆 -->
+                    <div class="flex flex-col items-center gap-2">
+                        <span class="text-xs text-gray-400 font-bold tracking-widest">當前出牌</span>
+                        <div v-if="discardPileTop" class="uno-card shadow-2xl scale-90 sm:scale-100 !m-0" :class="getCardClass(discardPileTop)">
+                            <div class="uno-card-inner">
+                                <span class="card-center" v-html="getCardDisplay(discardPileTop)"></span>
+                                <span class="card-label">{{ getCardSelLabel(discardPileTop) }}</span>
+                            </div>
                         </div>
                     </div>
                 </div>
-                
-                <!-- Turn Direction & Timer Indicator -->
-                <div class="absolute inset-0 pointer-events-none flex items-center justify-center opacity-20">
-                    <i class="fas fa-sync-alt text-8xl" :class="{'fa-spin-reverse': gameState.direction === -1, 'fa-spin': gameState.direction === 1}"></i>
+
+                <!-- 右/下：SEL 對話紀錄框 (取代原本的 Previous Share) -->
+                <div class="w-full md:w-[400px] lg:w-[500px] h-32 md:h-48 bg-gray-800/90 border border-gray-600 rounded-xl flex flex-col shadow-inner shrink-0">
+                    <div class="bg-gray-700/50 px-3 py-1.5 border-b border-gray-600 text-xs font-bold text-gray-300 flex justify-between items-center rounded-t-xl">
+                        <span><i class="fas fa-comments text-blue-400"></i> 行動與分享紀錄</span>
+                    </div>
+                    <div id="log-container" class="flex-1 overflow-y-auto p-3 space-y-2 log-container text-sm">
+                        <div v-for="log in gameState.gameLogs" :key="log.id" class="animate-fade-in">
+                            <!-- 系統訊息 -->
+                            <div v-if="log.type === 'system'" class="text-center text-gray-400 text-xs my-1 bg-gray-900/50 rounded py-1">
+                                {{ log.text }}
+                            </div>
+                            <!-- 動作訊息 -->
+                            <div v-else-if="log.type === 'action'" class="text-gray-300 text-xs">
+                                <i class="fas fa-play text-gray-500 text-[10px]"></i> {{ log.text }}
+                            </div>
+                            <!-- SEL 分享訊息 (高亮) -->
+                            <div v-else-if="log.type === 'share'" class="bg-blue-900/40 border border-blue-500/30 p-2 rounded-lg mt-1">
+                                <div class="text-blue-300 font-bold text-xs mb-1">{{ log.player }} 分享：</div>
+                                <div class="text-white leading-relaxed font-medium">"{{ log.text }}"</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
+
             </div>
 
-            <!-- Preivous Share Highlight -->
-            <transition name="fade">
-                <div v-if="gameState.previousShare" class="mx-auto bg-black/60 backdrop-blur border border-white/20 p-3 rounded-lg max-w-lg w-full text-center mb-4 text-sm relative z-20">
-                    <p class="text-gray-400 text-xs mb-1">上一次情緒分享 (由 {{ getPlayerName(gameState.previousShare.playerId) }} 提供):</p>
-                    <p class="font-medium text-white italic">"{{ gameState.previousShare.text }}"</p>
-                </div>
-            </transition>
-
-            <!-- My Hand Area -->
-            <div class="relative bg-black/40 pt-4 pb-6 px-4 rounded-t-3xl border-t border-white/10 mt-auto shadow-[0_-10px_30px_rgba(0,0,0,0.5)] z-20">
-                <div class="flex justify-between items-end mb-2">
-                    <div class="flex flex-col">
-                        <span class="font-bold text-lg">{{ playerName }} (你)</span>
-                        <span class="text-sm" :class="isMyTurn ? 'text-green-400 animate-pulse font-bold' : 'text-gray-400'">
-                            {{ isMyTurn ? `換你出牌！ (${turnTimeRemaining}s)` : '等待其他玩家...' }}
+            <!-- 下方：我的手牌區域 -->
+            <div class="w-full bg-gray-800/80 rounded-t-2xl border-t border-gray-600 p-3 sm:p-4 shrink-0 flex flex-col">
+                <div class="flex justify-between items-center mb-2">
+                    <div>
+                        <span class="font-bold text-white text-sm sm:text-base">你的手牌 ({{ myCards.length }} 張)</span>
+                        <span class="ml-2 text-xs sm:text-sm font-bold" :class="isMyTurn ? 'text-yellow-400 animate-pulse' : 'text-gray-500'">
+                            {{ isMyTurn ? '👉 換你出牌！' : '等待他人...' }}
                         </span>
                     </div>
                     
-                    <!-- Action Buttons -->
+                    <!-- 行動按鈕組 -->
                     <div class="flex gap-2">
-                        <button v-if="canCallCatch" @click="catchUno" class="bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-4 rounded-full shadow-lg border-2 border-white animate-bounce text-sm">抓包！(罰2張)</button>
-                        <button v-if="canCallCalm" @click="callCalm" :disabled="iHaveCalledCalm" class="font-bold py-2 px-4 rounded-full shadow-lg border-2 border-white text-sm transition" :class="iHaveCalledCalm ? 'bg-gray-500 text-gray-300' : 'bg-green-500 hover:bg-green-400 text-white animate-pulse'">
-                            {{ iHaveCalledCalm ? '已平靜' : '喊出【平靜】!' }}
+                        <!-- UNO 抓包按鈕 -->
+                        <button v-if="canCallCatch" @click="catchUno" class="bg-red-600 hover:bg-red-500 text-white font-bold py-1.5 px-3 rounded text-xs sm:text-sm shadow">抓包！</button>
+                        
+                        <!-- 喊平靜按鈕 -->
+                        <button v-if="canCallCalm" @click="callCalm" :disabled="iHaveCalledCalm" class="font-bold py-1.5 px-4 rounded text-xs sm:text-sm transition shadow" :class="iHaveCalledCalm ? 'bg-gray-600 text-gray-400' : 'bg-orange-500 hover:bg-orange-400 text-white animate-bounce'">
+                            {{ iHaveCalledCalm ? '已平靜' : '喊出「平靜」!' }}
+                        </button>
+
+                        <!-- 手機版明顯的抽牌鈕 -->
+                        <button v-if="isMyTurn" @click="drawCard" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-1.5 px-4 rounded text-xs sm:text-sm shadow transition">
+                            抽牌 (Pass)
                         </button>
                     </div>
                 </div>
 
-                <div class="hand-container overflow-x-auto pb-4 custom-scrollbar">
+                <!-- 手牌橫向卷軸 -->
+                <div class="hand-container">
                     <div v-for="(card, index) in myCards" :key="card.id" 
                          @click="playCard(card)"
-                         class="uno-card flex-shrink-0" 
-                         :class="[getCardClass(card), { 'disabled': !isMyTurn || (!isValidPlay(card) && isMyTurn) }]"
-                         :style="{'z-index': index}">
+                         class="uno-card" 
+                         :class="[getCardClass(card), { 'disabled': !isMyTurn || (!isValidPlay(card) && isMyTurn) }]">
                         <div class="uno-card-inner">
-                            <span class="card-corner corner-tl" v-html="getCardDisplay(card, true)"></span>
                             <span class="card-center" v-html="getCardDisplay(card)"></span>
-                            <span class="card-corner corner-br" v-html="getCardDisplay(card, true)"></span>
+                            <span class="card-label">{{ getCardSelLabel(card) }}</span>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Modals -->
 
-        <!-- 1. Share Modal (Input) -->
-        <div v-if="showShareModal" class="absolute inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-            <div class="bg-gray-800 p-6 rounded-2xl w-full max-w-md border border-gray-600 shadow-2xl bounce-enter-active">
-                <h3 class="text-xl font-bold mb-4 flex items-center gap-2">
-                    <div class="w-4 h-4 rounded-full" :style="{ backgroundColor: getColorCode(pendingCard.color !== 'black' ? pendingCard.color : chosenWildColor) }"></div>
-                    情緒分享任務
-                </h3>
+        <!-- 1. 出牌分享彈窗 (自己) -->
+        <div v-if="showShareModal" class="absolute inset-0 bg-black/85 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+            <div class="bg-gray-800 p-5 md:p-6 rounded-2xl w-full max-w-lg border border-gray-600 shadow-2xl flex flex-col max-h-[90vh]">
+                <h3 class="text-xl font-bold text-white mb-4 border-b border-gray-700 pb-2">出牌與分享</h3>
                 
-                <div v-if="pendingCard.color === 'black'" class="mb-4 bg-gray-700 p-3 rounded text-sm">
-                    <p class="font-bold mb-2">請選擇接下來的顏色：</p>
-                    <div class="flex gap-2 justify-center">
-                        <button v-for="c in ['red', 'yellow', 'green', 'blue']" :key="c" @click="chosenWildColor = c" 
-                                class="w-10 h-10 rounded-full border-2 transition hover:scale-110" 
-                                :class="chosenWildColor === c ? 'border-white shadow-[0_0_10px_white]' : 'border-transparent'"
-                                :style="{ backgroundColor: getColorCode(c) }"></button>
+                <div class="flex gap-4 mb-4 items-center">
+                    <!-- 縮小版預覽牌 -->
+                    <div class="uno-card !w-[54px] !h-[81px] !m-0 pointer-events-none shrink-0" :class="getCardClass(pendingCard)">
+                         <div class="uno-card-inner !p-1">
+                            <span class="card-center !text-xl !mt-2" v-html="getCardDisplay(pendingCard)"></span>
+                            <span class="card-label !text-[10px]">{{ getCardSelLabel(pendingCard) }}</span>
+                        </div>
+                    </div>
+                    
+                    <!-- 萬用牌選色 -->
+                    <div v-if="pendingCard.color === 'black'" class="flex-1">
+                        <p class="text-sm font-bold text-gray-300 mb-2">請指定接下來的顏色：</p>
+                        <div class="flex gap-2">
+                            <button v-for="c in ['red', 'yellow', 'green', 'blue']" :key="c" @click="chosenWildColor = c" 
+                                    class="w-8 h-8 rounded-full border-2 transition" 
+                                    :class="chosenWildColor === c ? 'border-white scale-125 shadow-[0_0_10px_white]' : 'border-transparent opacity-60'"
+                                    :style="{ backgroundColor: getColorCode(c) }"></button>
+                        </div>
                     </div>
                 </div>
 
-                <div class="bg-blue-900/40 p-3 rounded-lg border border-blue-500/30 mb-4 text-sm leading-relaxed">
-                    <p class="text-blue-300 font-bold mb-1"><i class="fas fa-info-circle"></i> 提示：</p>
-                    <p v-html="getSharePrompt(pendingCard, chosenWildColor)"></p>
+                <!-- SEL 專屬提示 -->
+                <div class="bg-gray-900 rounded-lg p-3 border border-gray-700 mb-4 text-sm">
+                    <p class="text-yellow-400 font-bold mb-1"><i class="fas fa-lightbulb"></i> 提示：</p>
+                    <p class="text-gray-200 leading-relaxed" v-html="getSharePrompt(pendingCard, chosenWildColor)"></p>
                 </div>
 
-                <textarea v-model="shareText" rows="4" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white mb-2 focus:outline-none focus:border-green-500" placeholder="在此輸入你的分享內容... (至少10個字)"></textarea>
-                <div class="flex justify-between items-center text-xs text-gray-400 mb-4">
-                    <span>字數: {{ shareText.length }} / 100</span>
-                    <span v-if="shareText.length < 10" class="text-red-400">請至少輸入10個字</span>
+                <!-- 輸入區 -->
+                <div class="flex-1 flex flex-col min-h-[120px]">
+                    <textarea v-model="shareText" class="flex-1 w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white resize-none focus:outline-none focus:border-yellow-500 transition shadow-inner" placeholder="請真誠地在此輸入... (至少10個字)"></textarea>
+                    <div class="flex justify-between items-center mt-2 text-xs">
+                        <span :class="shareText.length >= 10 ? 'text-green-400' : 'text-red-400'">目前字數: {{ shareText.length }}</span>
+                        <span v-if="shareText.length < 10" class="text-red-400 font-bold">字數不足</span>
+                    </div>
                 </div>
 
-                <div class="flex gap-3">
-                    <button @click="cancelPlay" class="flex-1 bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 rounded">取消出牌</button>
-                    <button @click="submitShare" :disabled="shareText.length < 10 || (pendingCard.color === 'black' && !chosenWildColor)" class="flex-1 bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white font-bold py-2 rounded">送出分享</button>
+                <!-- 按鈕區 -->
+                <div class="flex gap-3 mt-4 pt-4 border-t border-gray-700">
+                    <button @click="cancelPlay" class="flex-1 bg-gray-600 hover:bg-gray-500 text-white font-bold py-3 rounded-lg transition">取消</button>
+                    <button @click="submitShare" :disabled="shareText.length < 10 || (pendingCard.color === 'black' && !chosenWildColor)" class="flex-1 bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white font-bold py-3 rounded-lg transition shadow-lg flex items-center justify-center gap-2">
+                        <span>送出分享</span> <i class="fas fa-paper-plane"></i>
+                    </button>
                 </div>
             </div>
         </div>
 
-        <!-- 2. Voting Modal (For other players) -->
-        <div v-if="gameState.status === 'VOTING' && gameState.currentSharing.playerId !== myId" class="absolute inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-            <div class="bg-gray-800 p-6 rounded-2xl w-full max-w-md border border-gray-600 shadow-2xl text-center bounce-enter-active">
-                <h3 class="text-lg font-bold text-gray-300 mb-2">聆聽時間</h3>
-                <p class="text-sm text-gray-400 mb-4">{{ getPlayerName(gameState.currentSharing.playerId) }} 正在分享：</p>
+        <!-- 2. 聆聽與回饋彈窗 (等待其他人投票) -->
+        <div v-if="gameState.status === 'VOTING' && gameState.currentSharing.playerId !== myId" class="absolute inset-0 bg-black/85 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+            <div class="bg-gray-800 p-6 rounded-2xl w-full max-w-md border border-gray-600 shadow-2xl flex flex-col">
+                <div class="text-center mb-4">
+                    <h3 class="text-xl font-bold text-yellow-400 mb-1">聆聽時間</h3>
+                    <p class="text-sm text-gray-300">{{ getPlayerName(gameState.currentSharing.playerId) }} 正在分享...</p>
+                </div>
                 
-                <div class="bg-black/40 p-4 rounded-lg italic text-lg mb-6 border-l-4" :style="{ borderColor: getColorCode(gameState.currentSharing.card.color !== 'black' ? gameState.currentSharing.card.color : gameState.currentSharing.chosenColor) }">
+                <div class="bg-gray-900 p-4 rounded-xl text-white text-base leading-relaxed mb-6 border-l-4 shadow-inner" :style="{ borderColor: getColorCode(gameState.currentSharing.card.color !== 'black' ? gameState.currentSharing.card.color : gameState.currentSharing.chosenColor) }">
                     "{{ gameState.currentSharing.text }}"
                 </div>
                 
-                <p class="text-xs text-gray-400 mb-2">請給予真誠的回饋 ({{ votingTimeRemaining }}s)</p>
-                
-                <div class="flex gap-4 justify-center" v-if="!hasVoted">
-                    <button @click="submitVote('accept')" class="flex-1 flex flex-col items-center justify-center bg-green-900/60 hover:bg-green-700/80 border border-green-500/50 p-3 rounded-xl transition group">
-                        <span class="text-3xl mb-1 group-hover:scale-125 transition">💖</span>
-                        <span class="font-bold text-green-200">感謝分享 / 接納</span>
-                    </button>
-                    <button @click="submitVote('reject')" class="flex-1 flex flex-col items-center justify-center bg-yellow-900/60 hover:bg-yellow-700/80 border border-yellow-500/50 p-3 rounded-xl transition group">
-                        <span class="text-3xl mb-1 group-hover:scale-125 transition">🤔</span>
-                        <span class="font-bold text-yellow-200">偏離主題 / 請補充</span>
-                    </button>
+                <div v-if="!hasVoted" class="space-y-3">
+                    <p class="text-xs text-center text-gray-400 mb-2">請給予真誠的回饋 (倒數 {{ votingTimeRemaining }}s)</p>
+                    <div class="flex gap-3">
+                        <button @click="submitVote('accept')" class="flex-1 bg-green-700 hover:bg-green-600 text-white p-3 rounded-xl transition flex flex-col items-center gap-1 border border-green-500 shadow-lg">
+                            <span class="text-2xl">💖</span>
+                            <span class="font-bold text-sm">感謝分享 / 接納</span>
+                        </button>
+                        <button @click="submitVote('reject')" class="flex-1 bg-gray-700 hover:bg-gray-600 text-gray-300 p-3 rounded-xl transition flex flex-col items-center gap-1 border border-gray-500 shadow-lg">
+                            <span class="text-2xl">🤔</span>
+                            <span class="font-bold text-sm">偏離主題 / 請補充</span>
+                        </button>
+                    </div>
                 </div>
-                <div v-else class="text-green-400 font-bold py-4">
-                    <i class="fas fa-check-circle"></i> 已送出回饋，等待其他人...
+                <div v-else class="text-center py-6 bg-gray-900 rounded-xl border border-gray-700">
+                    <i class="fas fa-check-circle text-green-500 text-3xl mb-2"></i>
+                    <p class="text-gray-300 font-bold">已送出回饋</p>
+                    <p class="text-xs text-gray-500 mt-1">等待其他玩家完成... ({{ votingTimeRemaining }}s)</p>
                 </div>
             </div>
         </div>
         
-        <!-- Wait state for current player during voting -->
-        <div v-if="gameState.status === 'VOTING' && gameState.currentSharing.playerId === myId" class="absolute inset-0 bg-black/50 flex flex-col items-center justify-center z-50">
-             <i class="fas fa-spinner fa-spin text-4xl text-white mb-4"></i>
-             <p class="text-xl font-bold bg-black/70 px-4 py-2 rounded-lg">等待其他玩家給予回饋... ({{ votingTimeRemaining }}s)</p>
+        <!-- 自己正在等待投票結果的提示 -->
+        <div v-if="gameState.status === 'VOTING' && gameState.currentSharing.playerId === myId" class="absolute inset-0 bg-black/70 flex flex-col items-center justify-center z-50 backdrop-blur-sm">
+             <i class="fas fa-spinner fa-spin text-5xl text-yellow-500 mb-6 drop-shadow-lg"></i>
+             <div class="bg-gray-800 border border-gray-600 px-6 py-4 rounded-xl shadow-2xl text-center">
+                 <p class="text-xl font-bold text-white mb-2">分享已送出！</p>
+                 <p class="text-sm text-gray-400">等待其他玩家閱讀與回饋... ({{ votingTimeRemaining }}s)</p>
+             </div>
         </div>
 
-        <!-- Notification Toast -->
+        <!-- 系統通知 Toast -->
         <transition name="fade">
-            <div v-if="notification" class="absolute top-20 left-1/2 -translate-x-1/2 bg-yellow-500 text-black px-6 py-3 rounded-full font-bold shadow-xl z-50 flex items-center gap-2">
+            <div v-if="notification" class="absolute top-20 left-1/2 -translate-x-1/2 bg-yellow-500 text-black px-6 py-3 rounded-full font-bold shadow-xl z-50 flex items-center gap-2 whitespace-nowrap">
                 <i class="fas fa-bell"></i> {{ notification }}
             </div>
         </transition>
 
     </div>
 
-    <!-- Screen: Game Over -->
-    <div v-else-if="screen === 'gameover'" class="min-h-screen bg-gray-900 flex items-center justify-center p-4 relative">
-        <!-- Confetti effect base -->
-        <div class="absolute inset-0 overflow-hidden pointer-events-none">
-            <div v-for="i in 50" :key="i" class="absolute w-2 h-2 rounded-full" 
-                 :style="{
-                    backgroundColor: ['#ef4444','#eab308','#22c55e','#3b82f6'][Math.floor(Math.random()*4)],
-                    left: Math.random() * 100 + '%',
-                    top: '-5%',
-                    animation: `fall ${Math.random() * 3 + 2}s linear infinite`,
-                    animationDelay: `${Math.random() * 2}s`
-                 }"></div>
-        </div>
-        <style>@keyframes fall { to { transform: translateY(110vh) rotate(360deg); } }</style>
-
-        <div class="bg-gray-800 p-8 rounded-2xl shadow-2xl max-w-lg w-full relative z-10 border border-yellow-500/30">
+    <div v-else-if="screen === 'gameover'" class="flex-1 flex items-center justify-center bg-gray-900 p-4 relative overflow-hidden">
+        <div class="bg-gray-800 p-6 md:p-8 rounded-2xl shadow-2xl max-w-md w-full relative z-10 border border-yellow-500/50">
             <h1 class="text-4xl font-extrabold text-center mb-2 text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">對局結束</h1>
-            <p class="text-center text-gray-300 mb-8">感謝大家的真誠分享！</p>
+            <p class="text-center text-gray-300 mb-6 text-sm">感謝大家的真誠參與與傾聽！</p>
             
-            <h2 class="text-xl font-bold text-white mb-4 border-b border-gray-600 pb-2">排行榜 (積分越低越好)</h2>
-            <ul class="space-y-3 mb-8">
+            <h2 class="text-lg font-bold text-white mb-3 border-b border-gray-700 pb-2">排行榜 (積分越低越好)</h2>
+            <ul class="space-y-3 mb-8 max-h-[40vh] overflow-y-auto pr-2">
                 <li v-for="(p, index) in sortedLeaderboard" :key="p.id" 
                     class="flex justify-between items-center p-3 rounded-lg border"
-                    :class="index === 0 ? 'bg-yellow-900/50 border-yellow-500 text-yellow-300' : 'bg-gray-700 border-gray-600'">
+                    :class="index === 0 ? 'bg-yellow-900/40 border-yellow-500/50 text-yellow-300' : 'bg-gray-700 border-gray-600'">
                     <div class="flex items-center gap-3">
-                        <span class="font-black text-lg w-6">{{ index + 1 }}</span>
-                        <span v-if="index === 0"><i class="fas fa-trophy text-yellow-400"></i></span>
+                        <span class="font-black text-lg w-6 text-center">{{ index + 1 }}</span>
+                        <span v-if="index === 0"><i class="fas fa-crown text-yellow-400"></i></span>
                         <span class="font-bold">{{ p.name }}</span>
                     </div>
-                    <div class="flex gap-4 text-sm">
-                        <span>剩 {{ p.cards.length }} 張</span>
+                    <div class="flex gap-4 text-sm items-center">
+                        <span class="text-gray-400 text-xs">剩 {{ p.cards.length }} 張</span>
                         <span class="font-bold w-12 text-right">{{ p.score }} 分</span>
                     </div>
                 </li>
             </ul>
             
-            <button v-if="isHost" @click="resetToLobby" class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-4 rounded-lg transition">返回大廳重新開始</button>
-            <p v-else class="text-center text-gray-400 text-sm">等待房主重新開啟房間...</p>
+            <button v-if="isHost" @click="resetToLobby" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg transition shadow-lg">返回大廳重新開始</button>
+            <p v-else class="text-center text-gray-400 text-sm bg-gray-900 py-3 rounded-lg border border-gray-700">等待房主重新開啟房間...</p>
         </div>
     </div>
 
     <script>
-        const { createApp, ref, computed, onMounted, watch } = Vue;
+        const { createApp, ref, computed, onMounted, watch, nextTick } = Vue;
 
         createApp({
             setup() {
-                // Constants
+                // 常數設定
                 const COLORS = ['red', 'yellow', 'green', 'blue'];
-                const TURN_TIME_LIMIT = 30; // seconds
-                const VOTE_TIME_LIMIT = 15; // seconds
-                const GLOBAL_TIME_LIMIT = 15 * 60; // 15 mins
+                const TURN_TIME_LIMIT = 30; 
+                const VOTE_TIME_LIMIT = 15; 
 
-                // App State
+                // 畫面狀態
                 const screen = ref('lobby'); // lobby, playing, gameover
                 const notification = ref('');
+                const countdownValue = ref(3);
                 
-                // User & Peer Info
+                // 玩家與連線資訊
                 const playerName = ref('');
                 const myId = ref('');
                 const peerId = ref('');
@@ -442,48 +490,45 @@
                 const joinRoomId = ref('');
                 const isConnecting = ref(false);
                 
-                // PeerJS objects
+                // PeerJS 物件
                 let peer = null;
-                let connToHost = null; // Client uses this
-                let connections = {}; // Host uses this to track clients
+                let connToHost = null; 
+                let connections = {}; 
 
-                // Game State (Broadcasted by Host)
+                // 遊戲狀態機 (房主廣播給所有人)
                 const gameStateTemplate = () => ({
-                    status: 'LOBBY', // LOBBY, PLAYING, VOTING, GAMEOVER
+                    status: 'LOBBY', // LOBBY, COUNTDOWN, PLAYING, VOTING, GAMEOVER
                     players: [], // { id, name, isHost, isReady, hasCalledCalm, cards: [], score: 0 }
                     deck: [],
                     discardPile: [],
                     currentColor: '',
-                    direction: 1, // 1 (cw) or -1 (ccw)
+                    direction: 1, 
                     currentPlayerIndex: 0,
                     turnEndTime: 0,
-                    globalEndTime: 0,
-                    previousShare: null, // { playerId, text }
-                    currentSharing: null, // { playerId, card, chosenColor, text, votes: {} }
+                    currentSharing: null, // 暫存正在分享的資料
+                    gameLogs: [] // { id, type: 'system'|'action'|'share', player?, text }
                 });
                 const gameState = ref(gameStateTemplate());
 
-                // Local State for Active Game
+                // 客戶端本地狀態
                 const shareText = ref('');
                 const showShareModal = ref(false);
                 const pendingCard = ref(null);
                 const chosenWildColor = ref('');
                 const hasVoted = ref(false);
                 
-                // Timers
+                // UI 計時器
                 const turnTimeRemaining = ref(0);
                 const votingTimeRemaining = ref(0);
-                const globalTimeRemaining = ref(0);
                 let timerInterval = null;
 
-                // --- Computed Properties ---
+                // --- 計算屬性 Computed ---
                 const myCards = computed(() => {
                     const me = gameState.value.players.find(p => p.id === myId.value);
                     return me ? me.cards : [];
                 });
                 
                 const otherPlayers = computed(() => {
-                    // Reorder players so current player is at bottom, others around
                     const meIndex = gameState.value.players.findIndex(p => p.id === myId.value);
                     if (meIndex === -1) return [];
                     const others = [];
@@ -504,6 +549,11 @@
                     const me = players.value.find(p => p.id === myId.value);
                     return me ? me.isReady : false;
                 });
+                const canHostStart = computed(() => {
+                    if (players.value.length < 2) return false;
+                    return players.value.filter(p => !p.isHost).every(p => p.isReady);
+                });
+
                 const currentPlayerId = computed(() => {
                     if (gameState.value.players.length === 0) return null;
                     return gameState.value.players[gameState.value.currentPlayerIndex].id;
@@ -515,14 +565,12 @@
                 });
                 const currentColor = computed(() => gameState.value.currentColor);
 
-                // Calm (UNO) Logic
                 const canCallCalm = computed(() => myCards.value.length === 1);
                 const iHaveCalledCalm = computed(() => {
                     const me = players.value.find(p => p.id === myId.value);
                     return me ? me.hasCalledCalm : false;
                 });
                 const canCallCatch = computed(() => {
-                    // check if anyone else has 1 card and hasn't called calm
                     return players.value.some(p => p.id !== myId.value && p.cards.length === 1 && !p.hasCalledCalm);
                 });
 
@@ -530,12 +578,30 @@
                     return [...gameState.value.players].sort((a, b) => a.score - b.score);
                 });
 
-                // --- Networking (PeerJS) ---
+                // --- 監聽日誌捲動 ---
+                watch(() => gameState.value.gameLogs, () => {
+                    if(screen.value === 'playing') {
+                        nextTick(() => {
+                            const container = document.getElementById('log-container');
+                            if (container) container.scrollTop = container.scrollHeight;
+                        });
+                    }
+                }, { deep: true });
+
+                // --- STREAMING_CHUNK:P2P 連線邏輯 (PeerJS)... ---
                 const initPeer = (idPrefix = '') => {
                     isConnecting.value = true;
-                    // Generate random ID
                     const id = idPrefix + Math.random().toString(36).substr(2, 4).toUpperCase();
-                    peer = new Peer(id);
+                    
+                    // 加入 Google STUN 伺服器，增強手機 4G/5G 連線能力
+                    peer = new Peer(id, {
+                        config: {
+                            'iceServers': [
+                                { urls: 'stun:stun.l.google.com:19302' },
+                                { urls: 'stun:stun1.l.google.com:19302' }
+                            ]
+                        }
+                    });
                     
                     peer.on('open', (pid) => {
                         peerId.value = pid;
@@ -543,23 +609,20 @@
                         roomId.value = isHost.value ? pid : joinRoomId.value;
                         isConnecting.value = false;
                         
-                        if (isHost.value) {
-                            setupHost();
-                        } else {
-                            connectToHost();
-                        }
+                        if (isHost.value) setupHost();
+                        else connectToHost();
                     });
 
                     peer.on('error', (err) => {
                         console.error(err);
-                        showNotification('連線發生錯誤: ' + err.type);
+                        showNotification('連線錯誤，請檢查網路或房間代碼');
                         isConnecting.value = false;
                     });
                 };
 
                 const createRoom = () => {
                     isHost.value = true;
-                    initPeer('R-'); // Room prefix
+                    initPeer('R-'); 
                 };
 
                 const joinRoom = () => {
@@ -569,47 +632,34 @@
                 };
 
                 const setupHost = () => {
-                    // Host adds self to game
                     gameState.value.players.push({
-                        id: myId.value, name: playerName.value, isHost: true, isReady: false, hasCalledCalm: false, cards: [], score: 0
+                        id: myId.value, name: playerName.value, isHost: true, isReady: true, hasCalledCalm: false, cards: [], score: 0
                     });
 
                     peer.on('connection', (conn) => {
                         connections[conn.peer] = conn;
-                        
-                        conn.on('open', () => {
-                            // Request player info
-                            conn.send({ type: 'REQ_INFO' });
-                        });
-
-                        conn.on('data', (data) => {
-                            handleClientMessage(conn.peer, data);
-                        });
-
+                        conn.on('open', () => conn.send({ type: 'REQ_INFO' }));
+                        conn.on('data', (data) => handleClientMessage(conn.peer, data));
                         conn.on('close', () => {
-                            // Player disconnected
                             gameState.value.players = gameState.value.players.filter(p => p.id !== conn.peer);
                             delete connections[conn.peer];
                             broadcastState();
                         });
                     });
                     
-                    // Host timer loop
+                    // 房主計時器迴圈
                     setInterval(() => {
                         if (gameState.value.status === 'PLAYING') {
-                            const now = Date.now();
-                            if (now > gameState.value.turnEndTime) {
-                                // Auto draw if timeout
+                            if (Date.now() > gameState.value.turnEndTime) {
+                                // 超時自動抽牌並換人
+                                addLog('system', `${getPlayerName(currentPlayerId.value)} 思考超時，自動抽牌`);
                                 processDraw(currentPlayerId.value);
                                 nextTurn();
                             }
-                            if (now > gameState.value.globalEndTime) {
-                                calculateScoresAndEnd();
-                            }
                         } else if (gameState.value.status === 'VOTING') {
                              if (Date.now() > gameState.value.turnEndTime) {
-                                 // Auto resolve vote on timeout
-                                 resolveVote();
+                                 // 投票超時，預設通過
+                                 resolveVote(true); 
                              }
                         }
                     }, 1000);
@@ -617,12 +667,9 @@
 
                 const connectToHost = () => {
                     connToHost = peer.connect(roomId.value);
-                    
                     connToHost.on('open', () => {
-                        // Send my info
                         connToHost.send({ type: 'INFO', payload: { name: playerName.value } });
                     });
-
                     connToHost.on('data', (data) => {
                         if (data.type === 'STATE_UPDATE') {
                             gameState.value = data.payload;
@@ -630,18 +677,19 @@
                         } else if (data.type === 'NOTIFICATION') {
                             showNotification(data.payload);
                         } else if (data.type === 'REJECTED_SHARE') {
-                            // Re-open share modal
-                            showNotification("多數玩家認為內容偏離主題，請再試著分享一次！");
+                            showNotification("多數人認為偏離主題，請再嘗試分享一次！");
                             showShareModal.value = true;
                             shareText.value = '';
+                        } else if (data.type === 'START_COUNTDOWN') {
+                            screen.value = 'playing'; // 切換背景
+                            gameState.value.status = 'COUNTDOWN';
+                            doClientCountdown();
                         }
                     });
                 };
 
-                // Host logic: Handle incoming messages from clients
                 const handleClientMessage = (peerId, data) => {
                     const pIndex = gameState.value.players.findIndex(p => p.id === peerId);
-                    
                     switch (data.type) {
                         case 'INFO':
                             if (pIndex === -1 && gameState.value.status === 'LOBBY' && gameState.value.players.length < 6) {
@@ -655,16 +703,11 @@
                             if (pIndex !== -1) {
                                 gameState.value.players[pIndex].isReady = !gameState.value.players[pIndex].isReady;
                                 broadcastState();
-                                checkAutoStart();
-                            }
-                            break;
-                        case 'PLAY_CARD':
-                            if (currentPlayerId.value === peerId && gameState.value.status === 'PLAYING') {
-                                handleCardPlayInit(peerId, data.payload.card);
                             }
                             break;
                         case 'DRAW_CARD':
                             if (currentPlayerId.value === peerId && gameState.value.status === 'PLAYING') {
+                                addLog('action', `${getPlayerName(peerId)} 選擇抽牌 (Pass)`);
                                 processDraw(peerId);
                                 nextTurn();
                             }
@@ -694,59 +737,72 @@
 
                 const broadcastState = () => {
                     if (!isHost.value) return;
-                    const stateObj = JSON.parse(JSON.stringify(gameState.value)); // Deep copy to avoid proxy issues
-                    
-                    // Local state update
+                    const stateObj = JSON.parse(JSON.stringify(gameState.value));
                     gameState.value = stateObj;
                     checkScreenState();
-
-                    // Send to clients
                     Object.values(connections).forEach(conn => {
                         conn.send({ type: 'STATE_UPDATE', payload: stateObj });
                     });
                 };
 
                 const sendNotification = (triggerId, msg, broadcast = false) => {
-                    const name = getPlayerName(triggerId);
-                    const fullMsg = broadcast ? `${name} ${msg}` : msg;
+                    const fullMsg = broadcast ? `${getPlayerName(triggerId)} ${msg}` : msg;
                     if (isHost.value) showNotification(fullMsg);
                     Object.values(connections).forEach(conn => {
                         conn.send({ type: 'NOTIFICATION', payload: fullMsg });
                     });
                 };
 
-                const notifyClient = (clientId, type, payload) => {
-                    if (clientId === myId.value) {
-                         if(type === 'REJECTED_SHARE') {
-                             showNotification("多數玩家認為內容偏離主題，請再試著分享一次！");
-                             showShareModal.value = true;
-                             shareText.value = '';
-                         }
-                    } else if (connections[clientId]) {
-                        connections[clientId].send({ type, payload });
-                    }
-                }
+                const addLog = (type, text, player = null) => {
+                    if(!isHost.value) return;
+                    gameState.value.gameLogs.push({ id: Date.now() + Math.random(), type, text, player });
+                    // 保留最近 50 筆
+                    if(gameState.value.gameLogs.length > 50) gameState.value.gameLogs.shift();
+                };
 
-                // --- Game Engine (Host Only) ---
+                // --- STREAMING_CHUNK:遊戲核心邏輯 (房主端)... ---
+                
+                const forceStart = () => {
+                    if (!canHostStart.value) return;
+                    
+                    // 廣播進入倒數
+                    Object.values(connections).forEach(conn => {
+                        conn.send({ type: 'START_COUNTDOWN' });
+                    });
+                    
+                    screen.value = 'playing';
+                    gameState.value.status = 'COUNTDOWN';
+                    doClientCountdown(() => {
+                        startGame();
+                    });
+                };
+
+                const doClientCountdown = (callback = null) => {
+                    countdownValue.value = 3;
+                    let iv = setInterval(() => {
+                        countdownValue.value--;
+                        if(countdownValue.value <= 0) {
+                            clearInterval(iv);
+                            if(callback) callback();
+                        }
+                    }, 1000);
+                };
+
                 const generateDeck = () => {
                     let deck = [];
                     let idCount = 0;
                     COLORS.forEach(color => {
-                        // 0 (1 each)
                         deck.push({ id: `c${idCount++}`, color, type: '0', display: '0' });
                         for (let i = 1; i <= 9; i++) {
-                            // 1-9 (2 each)
                             deck.push({ id: `c${idCount++}`, color, type: String(i), display: String(i) });
                             deck.push({ id: `c${idCount++}`, color, type: String(i), display: String(i) });
                         }
-                        // Action cards (2 each)
                         for(let i=0; i<2; i++){
                             deck.push({ id: `c${idCount++}`, color, type: 'skip', display: '<i class="fas fa-ban"></i>' });
                             deck.push({ id: `c${idCount++}`, color, type: 'reverse', display: '<i class="fas fa-exchange-alt"></i>' });
                             deck.push({ id: `c${idCount++}`, color, type: 'draw2', display: '+2' });
                         }
                     });
-                    // Wilds (4 each)
                     for(let i=0; i<4; i++){
                         deck.push({ id: `c${idCount++}`, color: 'black', type: 'wild', display: 'WILD' });
                         deck.push({ id: `c${idCount++}`, color: 'black', type: 'draw4', display: '+4' });
@@ -754,32 +810,23 @@
                     return deck.sort(() => Math.random() - 0.5);
                 };
 
-                const checkAutoStart = () => {
-                    if (!isHost.value) return;
-                    if (gameState.value.players.length >= 3 && gameState.value.players.every(p => p.isReady)) {
-                        startGame();
-                    }
-                };
-
                 const startGame = () => {
                     gameState.value.deck = generateDeck();
                     gameState.value.discardPile = [];
+                    gameState.value.gameLogs = [];
                     gameState.value.status = 'PLAYING';
-                    gameState.value.globalEndTime = Date.now() + GLOBAL_TIME_LIMIT * 1000;
                     
-                    // Deal 7 cards to each
                     gameState.value.players.forEach(p => {
                         p.cards = gameState.value.deck.splice(0, 7);
                         p.hasCalledCalm = false;
                         p.score = 0;
                     });
 
-                    // First card (must be color/number)
                     let firstCard;
                     do {
                         firstCard = gameState.value.deck.pop();
                         if (firstCard.color === 'black' || ['skip', 'reverse', 'draw2'].includes(firstCard.type)) {
-                            gameState.value.deck.unshift(firstCard); // put back at bottom
+                            gameState.value.deck.unshift(firstCard);
                             firstCard = null;
                         }
                     } while (!firstCard);
@@ -787,8 +834,9 @@
                     gameState.value.discardPile.push(firstCard);
                     gameState.value.currentColor = firstCard.color;
                     gameState.value.direction = 1;
-                    gameState.value.currentPlayerIndex = 0; // Randomize later if needed
+                    gameState.value.currentPlayerIndex = 0; 
                     
+                    addLog('system', `遊戲開始！起始牌為【${getColorName(firstCard.color)} ${firstCard.display}】`);
                     resetTurnTimer();
                     broadcastState();
                 };
@@ -800,28 +848,21 @@
                 const processDraw = (pId, count = 1) => {
                     const pIndex = gameState.value.players.findIndex(p => p.id === pId);
                     if (pIndex === -1) return;
-                    
                     for (let i = 0; i < count; i++) {
                         if (gameState.value.deck.length === 0) {
-                            // Reshuffle discard pile (keep top card)
                             const top = gameState.value.discardPile.pop();
                             gameState.value.deck = gameState.value.discardPile.sort(() => Math.random() - 0.5);
                             gameState.value.discardPile = [top];
                         }
-                        if (gameState.value.deck.length > 0) {
-                            gameState.value.players[pIndex].cards.push(gameState.value.deck.pop());
-                        }
+                        if (gameState.value.deck.length > 0) gameState.value.players[pIndex].cards.push(gameState.value.deck.pop());
                     }
-                    // Reset calm flag if cards > 1
-                    if (gameState.value.players[pIndex].cards.length > 1) {
-                         gameState.value.players[pIndex].hasCalledCalm = false;
-                    }
+                    if (gameState.value.players[pIndex].cards.length > 1) gameState.value.players[pIndex].hasCalledCalm = false;
                 };
 
                 const getNextPlayerIndex = (step = 1) => {
                     let nextIdx = gameState.value.currentPlayerIndex + (step * gameState.value.direction);
                     const numPlayers = gameState.value.players.length;
-                    return (nextIdx % numPlayers + numPlayers) % numPlayers; // handle negative
+                    return (nextIdx % numPlayers + numPlayers) % numPlayers;
                 };
 
                 const nextTurn = (step = 1) => {
@@ -830,102 +871,100 @@
                     broadcastState();
                 };
 
-                // SEL Logic Step 1: Initialize play, wait for share
-                const handleCardPlayInit = (peerId, card) => {
-                    // Check if it's a valid play before opening modal (safety check on host)
-                    if (!isValidPlayRule(card, gameState.value.discardPile[gameState.value.discardPile.length-1], gameState.value.currentColor)) return;
-                    
-                    // Host acknowledges intent to play, tells client to open modal?
-                    // Actually, client opens modal locally. Host just needs to receive SUBMIT_SHARE.
-                };
-
-                // SEL Logic Step 2: Receive text, start voting
                 const startVotingPhase = (peerId, { card, text, chosenColor }) => {
                     gameState.value.status = 'VOTING';
                     gameState.value.currentSharing = {
-                        playerId: peerId,
-                        card: card,
-                        chosenColor: chosenColor,
-                        text: text,
+                        playerId: peerId, card: card, chosenColor: chosenColor, text: text,
                         votes: { accept: 0, reject: 0, voters: [] }
                     };
-                    gameState.value.turnEndTime = Date.now() + VOTE_TIME_LIMIT * 1000; // 15s to vote
+                    gameState.value.turnEndTime = Date.now() + VOTE_TIME_LIMIT * 1000;
                     broadcastState();
                 };
 
-                // SEL Logic Step 3: Tally votes
                 const registerVote = (peerId, voteType) => {
                     const shareData = gameState.value.currentSharing;
-                    if (shareData.playerId === peerId || shareData.votes.voters.includes(peerId)) return; // Can't vote on own / twice
+                    if (shareData.playerId === peerId || shareData.votes.voters.includes(peerId)) return;
                     
                     shareData.votes.voters.push(peerId);
                     shareData.votes[voteType]++;
                     
-                    // Check if everyone (except sharing player) voted
                     if (shareData.votes.voters.length >= gameState.value.players.length - 1) {
                         resolveVote();
                     } else {
-                        broadcastState(); // Update others
+                        broadcastState();
                     }
                 };
 
-                // SEL Logic Step 4: Resolve
-                const resolveVote = () => {
+                const resolveVote = (forceAccept = false) => {
                     const shareData = gameState.value.currentSharing;
                     const pIndex = gameState.value.players.findIndex(p => p.id === shareData.playerId);
+                    const playerName = gameState.value.players[pIndex].name;
                     
-                    // Accept logic: tie goes to accept, or 0 voters goes to accept
-                    let accepted = true;
-                    if (shareData.votes.voters.length > 0 && shareData.votes.reject > shareData.votes.accept) {
+                    let accepted = forceAccept || true;
+                    // 一半或以上質疑則不通過
+                    if (!forceAccept && shareData.votes.voters.length > 0 && shareData.votes.reject >= shareData.votes.accept && shareData.votes.reject > 0) {
                         accepted = false;
                     }
 
                     if (accepted) {
-                        // Apply Card Effect
                         const card = shareData.card;
-                        // Remove card from hand
                         const cardIdx = gameState.value.players[pIndex].cards.findIndex(c => c.id === card.id);
                         if (cardIdx !== -1) gameState.value.players[pIndex].cards.splice(cardIdx, 1);
                         
                         gameState.value.discardPile.push(card);
-                        gameState.value.currentColor = card.color === 'black' ? shareData.chosenColor : card.color;
+                        let finalColor = card.color === 'black' ? shareData.chosenColor : card.color;
+                        gameState.value.currentColor = finalColor;
                         
-                        // Save previous share for context
-                        gameState.value.previousShare = {
-                            playerId: shareData.playerId,
-                            text: shareData.text
-                        };
+                        // 紀錄日誌
+                        let actionMsg = `打出了 ${getCardDisplay(card, true)}`;
+                        if(card.color === 'black') actionMsg += `，指定顏色為 ${getColorName(finalColor)}`;
+                        addLog('action', `${playerName} ${actionMsg}`);
+                        addLog('share', shareData.text, playerName);
 
-                        // Check Win condition before passing turn
+                        // 判斷勝利
                         if (gameState.value.players[pIndex].cards.length === 0) {
                              calculateScoresAndEnd();
                              return;
                         }
 
-                        // Apply special effects
+                        // 特殊牌效果
                         let step = 1;
                         if (card.type === 'skip') {
                             step = 2;
+                            addLog('system', `${getPlayerName(gameState.value.players[getNextPlayerIndex(1)].id)} 被跳過回合`);
                         } else if (card.type === 'reverse') {
                             gameState.value.direction *= -1;
-                            if (gameState.value.players.length === 2) step = 2; // Reverse acts like skip in 2-player
+                            addLog('system', `迴轉！順序反轉`);
+                            if (gameState.value.players.length === 2) step = 2;
                         } else if (card.type === 'draw2') {
-                            processDraw(gameState.value.players[getNextPlayerIndex(1)].id, 2);
-                            step = 2; // Skip next person after drawing
-                        } else if (card.type === 'draw4') {
-                            processDraw(gameState.value.players[getNextPlayerIndex(1)].id, 4);
+                            let target = gameState.value.players[getNextPlayerIndex(1)].id;
+                            processDraw(target, 2);
                             step = 2;
+                            addLog('system', `${getPlayerName(target)} 被罰抽 2 張牌`);
+                        } else if (card.type === 'draw4') {
+                            let target = gameState.value.players[getNextPlayerIndex(1)].id;
+                            processDraw(target, 4);
+                            step = 2;
+                            addLog('system', `${getPlayerName(target)} 被罰抽 4 張牌`);
                         }
                         
                         gameState.value.status = 'PLAYING';
                         gameState.value.currentSharing = null;
                         nextTurn(step);
                     } else {
-                        // Rejected! Tell player to try again
-                        gameState.value.status = 'PLAYING'; // Return to play state but keep turn
+                        // 投票未通過，留在該玩家回合
+                        addLog('system', `${playerName} 的分享被多數人認為偏離主題`);
+                        gameState.value.status = 'PLAYING';
                         resetTurnTimer();
                         broadcastState();
-                        notifyClient(shareData.playerId, 'REJECTED_SHARE', null);
+                        
+                        if (shareData.playerId === myId.value) {
+                             showNotification("多數人認為偏離主題，請再嘗試分享一次！");
+                             showShareModal.value = true;
+                             shareText.value = '';
+                        } else {
+                            connections[shareData.playerId].send({ type: 'REJECTED_SHARE' });
+                        }
                     }
                 };
 
@@ -934,17 +973,15 @@
                     gameState.value.players.forEach(p => {
                         if (p.id !== callerId && p.cards.length === 1 && !p.hasCalledCalm) {
                             processDraw(p.id, 2);
-                            sendNotification(p.id, `忘記喊平靜，被 ${getPlayerName(callerId)} 抓包，罰抽兩張！`);
+                            addLog('system', `${p.name} 忘記喊平靜，被抓包罰抽兩張！`);
                             caughtAnyone = true;
                         }
                     });
                     if (caughtAnyone) broadcastState();
                 };
 
-                // End Game & Scoring
                 const calculateScoresAndEnd = () => {
                     gameState.value.status = 'GAMEOVER';
-                    
                     gameState.value.players.forEach(p => {
                         let score = 0;
                         p.cards.forEach(c => {
@@ -954,27 +991,20 @@
                         });
                         p.score = score;
                     });
-                    
                     broadcastState();
                 };
 
 
-                // --- Client Actions (Emits) ---
-                
+                // --- STREAMING_CHUNK:客端介面操作... ---
                 const toggleReady = () => {
-                    if (isHost.value) {
-                        const me = gameState.value.players.find(p => p.id === myId.value);
-                        me.isReady = !me.isReady;
-                        broadcastState();
-                        checkAutoStart();
-                    } else {
-                        connToHost.send({ type: 'TOGGLE_READY' });
-                    }
+                    if (isHost.value) return; // 房主不用按準備
+                    connToHost.send({ type: 'TOGGLE_READY' });
                 };
 
                 const drawCard = () => {
                     if (!isMyTurn.value) return;
                     if (isHost.value) {
+                        addLog('action', `${playerName.value} 選擇抽牌 (Pass)`);
                         processDraw(myId.value);
                         nextTurn();
                     } else {
@@ -982,22 +1012,17 @@
                     }
                 };
 
-                // Validate rule locally before popping UI
-                const isValidPlayRule = (card, topCard, curColor) => {
+                const isValidPlay = (card) => {
+                    const top = discardPileTop.value;
+                    const curColor = currentColor.value;
                     if (card.color === 'black') return true;
                     if (card.color === curColor) return true;
-                    if (topCard && card.type === topCard.type) return true;
+                    if (top && card.type === top.type) return true;
                     return false;
-                };
-
-                const isValidPlay = (card) => {
-                    return isValidPlayRule(card, discardPileTop.value, currentColor.value);
                 };
 
                 const playCard = (card) => {
                     if (!isMyTurn.value || !isValidPlay(card)) return;
-                    
-                    // Open modal locally
                     pendingCard.value = card;
                     chosenWildColor.value = '';
                     shareText.value = '';
@@ -1013,28 +1038,17 @@
                     if (shareText.value.length < 10) return;
                     if (pendingCard.value.color === 'black' && !chosenWildColor.value) return;
 
-                    const payload = {
-                        card: pendingCard.value,
-                        text: shareText.value,
-                        chosenColor: chosenWildColor.value
-                    };
-
+                    const payload = { card: pendingCard.value, text: shareText.value, chosenColor: chosenWildColor.value };
                     showShareModal.value = false;
 
-                    if (isHost.value) {
-                        startVotingPhase(myId.value, payload);
-                    } else {
-                        connToHost.send({ type: 'SUBMIT_SHARE', payload });
-                    }
+                    if (isHost.value) startVotingPhase(myId.value, payload);
+                    else connToHost.send({ type: 'SUBMIT_SHARE', payload });
                 };
 
                 const submitVote = (vote) => {
                     hasVoted.value = true;
-                    if (isHost.value) {
-                        registerVote(myId.value, vote);
-                    } else {
-                        connToHost.send({ type: 'SUBMIT_VOTE', payload: { vote } });
-                    }
+                    if (isHost.value) registerVote(myId.value, vote);
+                    else connToHost.send({ type: 'SUBMIT_VOTE', payload: { vote } });
                 };
 
                 const callCalm = () => {
@@ -1043,95 +1057,77 @@
                         me.hasCalledCalm = true;
                         broadcastState();
                         sendNotification(myId.value, "喊出了平靜！", true);
-                    } else {
-                        connToHost.send({ type: 'CALL_CALM' });
-                    }
+                    } else connToHost.send({ type: 'CALL_CALM' });
                 };
 
                 const catchUno = () => {
-                    if (isHost.value) {
-                        handleCatchUno(myId.value);
-                    } else {
-                         connToHost.send({ type: 'CATCH_UNO' });
-                    }
+                    if (isHost.value) handleCatchUno(myId.value);
+                    else connToHost.send({ type: 'CATCH_UNO' });
                 };
 
                 const resetToLobby = () => {
                     if (!isHost.value) return;
                     gameState.value.status = 'LOBBY';
-                    gameState.value.players.forEach(p => { p.isReady = false; p.cards = []; p.score = 0; });
+                    gameState.value.players.forEach(p => { p.isReady = p.isHost; p.cards = []; p.score = 0; });
                     broadcastState();
                 };
 
-                // --- Helpers & UI Timers ---
-                
+                // --- STREAMING_CHUNK:輔助工具與 UI 更新... ---
                 const checkScreenState = () => {
                     if (gameState.value.status === 'LOBBY') screen.value = 'lobby';
                     else if (gameState.value.status === 'GAMEOVER') screen.value = 'gameover';
+                    else if (gameState.value.status === 'COUNTDOWN') screen.value = 'playing'; // 背景是playing
                     else screen.value = 'playing';
 
-                    if (gameState.value.status !== 'VOTING') {
-                        hasVoted.value = false;
-                    }
-                };
-
-                const updateTimers = () => {
-                    const now = Date.now();
-                    turnTimeRemaining.value = Math.max(0, Math.ceil((gameState.value.turnEndTime - now) / 1000));
-                    votingTimeRemaining.value = turnTimeRemaining.value; // Reuse turn end time logic
-                    globalTimeRemaining.value = Math.max(0, Math.ceil((gameState.value.globalEndTime - now) / 1000));
+                    if (gameState.value.status !== 'VOTING') hasVoted.value = false;
                 };
 
                 onMounted(() => {
-                    timerInterval = setInterval(updateTimers, 500);
+                    timerInterval = setInterval(() => {
+                        if(gameState.value.status === 'PLAYING' || gameState.value.status === 'VOTING') {
+                            const now = Date.now();
+                            turnTimeRemaining.value = Math.max(0, Math.ceil((gameState.value.turnEndTime - now) / 1000));
+                            votingTimeRemaining.value = turnTimeRemaining.value;
+                        }
+                    }, 500);
                 });
 
-                const formatTime = (secs) => {
-                    const m = Math.floor(secs / 60);
-                    const s = secs % 60;
-                    return `${m}:${s.toString().padStart(2, '0')}`;
-                };
-
-                const getPlayerName = (id) => {
+                const getPlayerName = id => {
                     const p = gameState.value.players.find(x => x.id === id);
-                    return p ? p.name : '未知玩家';
+                    return p ? p.name : '未知';
                 };
 
-                const showNotification = (msg) => {
+                const showNotification = msg => {
                     notification.value = msg;
                     setTimeout(() => { notification.value = ''; }, 3000);
                 };
 
                 const copyRoomId = () => {
                     navigator.clipboard.writeText(roomId.value);
-                    showNotification("房間代碼已複製！");
+                    showNotification("代碼已複製！");
                 };
 
-                const getColorCode = (colorStr) => {
-                    const map = { red: '#ef4444', yellow: '#eab308', green: '#22c55e', blue: '#3b82f6', black: '#1f2937' };
-                    return map[colorStr] || '#fff';
-                };
-
-                const getCardClass = (card) => {
+                const getColorCode = c => ({ red: '#ef4444', yellow: '#eab308', green: '#22c55e', blue: '#3b82f6', black: '#1f2937' }[c] || '#fff');
+                const getColorName = c => ({ red: '紅色', yellow: '黃色', green: '綠色', blue: '藍色', black: '萬用牌' }[c] || '');
+                const getCardClass = card => card ? `card-${card.color}` : '';
+                
+                const getCardDisplay = (card, plain = false) => {
                     if (!card) return '';
-                    return `card-${card.color}`;
-                };
-
-                const getCardDisplay = (card, isCorner = false) => {
-                    if (!card) return '';
-                    if (isCorner) {
-                        // Simplified icon for corner
-                        if (card.type === 'skip') return '<i class="fas fa-ban text-xs"></i>';
-                        if (card.type === 'reverse') return '<i class="fas fa-exchange-alt text-xs"></i>';
-                        if (card.type === 'draw2') return '+2';
-                        if (card.type === 'wild') return '<i class="fas fa-asterisk text-xs"></i>';
-                        if (card.type === 'draw4') return '+4';
-                        return card.display;
-                    }
+                    if (plain) return `${card.type === 'wild' || card.type==='draw4' ? '' : getColorName(card.color)} ${card.display.replace(/<[^>]*>?/gm, '')}`;
                     return card.display;
                 };
 
-                // SEL Prompts Dictionary
+                const getCardSelLabel = (card) => {
+                    if (!card) return '';
+                    if (!isNaN(card.type)) return '情緒分享';
+                    if (card.type === 'skip') return '提供調解';
+                    if (card.type === 'reverse') return '我-訊息';
+                    if (card.type === 'draw2') return '低同理心';
+                    if (card.type === 'draw4') return '高同理心';
+                    if (card.type === 'wild') return '建設性行動';
+                    return '';
+                };
+
                 const getSharePrompt = (card, chosenColor) => {
                     if (!card) return '';
                     const emotionMap = {
@@ -1140,42 +1136,27 @@
                         blue: '<span class="text-blue-400 font-bold">難過、沮喪或有些低落</span>',
                         green: '<span class="text-green-400 font-bold">討厭、反感或受不了</span>'
                     };
-                    
                     const targetColor = card.color === 'black' ? chosenColor : card.color;
-                    const prevPName = gameState.value.previousShare ? getPlayerName(gameState.value.previousShare.playerId) : '前一位玩家';
 
-                    if (!isNaN(card.type)) {
-                         return `請分享一個近期讓你感到 ${emotionMap[targetColor]} 的真實事件。`;
-                    }
+                    if (!isNaN(card.type)) return `請分享一個近期讓你感到 ${emotionMap[targetColor]} 的真實事件。`;
                     
-                    // If action card played FIRST (no previous share), fallback to basic sharing
-                    if (!gameState.value.previousShare && isNaN(card.type)) {
-                         return `因為你是第一位出牌，請直接分享一個讓你感到 ${targetColor ? emotionMap[targetColor] : '強烈情緒'} 的事件。`;
-                    }
-
                     switch (card.type) {
-                        case 'skip':
-                            return `針對 ${prevPName} 的事件，請提供一個情緒調解策略（例如：深呼吸、喝杯水...）。`;
-                        case 'reverse':
-                            return `針對 ${prevPName} 的事件，請用「我感到...因為...我希望...」的句型來表達我-訊息。`;
-                        case 'draw2':
-                            return `展現低層次同理心：請反映 ${prevPName} 表面的情緒與事件。<br><span class="text-xs text-blue-200">範例：「你因為...事情，心裡覺得很...」</span>`;
-                        case 'draw4':
-                            return `展現高層次同理心：請推測並點出 ${prevPName} 情緒背後更深層的感受或原因。<br><span class="text-xs text-blue-200">範例：「除了...之外，你是不是也覺得自己...」</span>`;
-                        case 'wild':
-                            return `負責任的決定：請提出一個具建設性的行動方案，說明如何將 ${prevPName} 的情緒，轉化為 <span class="font-bold underline">${targetColor}</span> 對應的情緒。`;
+                        case 'skip': return `針對前一個事件，請提供一個情緒調解策略<br><span class="text-xs text-gray-400">（例如：深呼吸3次、喝杯水、暫時離開現場...）</span>`;
+                        case 'reverse': return `針對前一個事件，請用「我-訊息」來表達。<br><span class="text-xs text-gray-400">（句型：我感到... / 因為... / 我希望...）</span>`;
+                        case 'draw2': return `請展現「低層次同理心」，簡述語意並反映對方表面的情感。<br><span class="text-xs text-gray-400">（例如：「你今天遇到...事情，心裡覺得很委屈和生氣。」）</span>`;
+                        case 'draw4': return `請展現「高層次同理心」，推測並點出潛在意義或盲點。<br><span class="text-xs text-gray-400">（例如：「除了覺得委屈，是不是心裡也覺得自己明明很努力卻不被看見...」）</span>`;
+                        case 'wild': return `請展現「負責任的決定」，提出一個具建設性的行動方案。<br><span class="text-xs text-gray-400">說明如何將原本的情緒轉化為你指定的 <span class="font-bold underline">${getColorName(targetColor)}</span> 情緒。</span>`;
                     }
                     return '';
                 };
 
                 return {
-                    screen, notification, playerName, myId, peerId, isHost, roomId, joinRoomId, isConnecting,
-                    gameState, myCards, otherPlayers, players, isReady, isMyTurn, discardPileTop, currentColor,
-                    turnTimeRemaining, votingTimeRemaining, globalTimeRemaining,
-                    canCallCalm, iHaveCalledCalm, canCallCatch, sortedLeaderboard,
+                    screen, notification, countdownValue, playerName, myId, peerId, isHost, roomId, joinRoomId, isConnecting,
+                    gameState, myCards, otherPlayers, players, isReady, canHostStart, isMyTurn, discardPileTop, currentColor,
+                    turnTimeRemaining, votingTimeRemaining, canCallCalm, iHaveCalledCalm, canCallCatch, sortedLeaderboard,
                     showShareModal, shareText, pendingCard, chosenWildColor, hasVoted,
-                    createRoom, joinRoom, copyRoomId, toggleReady, drawCard, playCard, cancelPlay, submitShare,
-                    submitVote, callCalm, catchUno, resetToLobby, formatTime, getColorCode, getCardClass, getCardDisplay,
+                    createRoom, joinRoom, copyRoomId, toggleReady, forceStart, drawCard, playCard, cancelPlay, submitShare,
+                    submitVote, callCalm, catchUno, resetToLobby, getColorCode, getCardClass, getCardDisplay, getCardSelLabel,
                     getPlayerName, getSharePrompt
                 };
             }
