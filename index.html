@@ -737,11 +737,16 @@
 
                 const broadcastState = () => {
                     if (!isHost.value) return;
-                    const stateObj = JSON.parse(JSON.stringify(gameState.value));
-                    gameState.value = stateObj;
                     checkScreenState();
+                    const stateObj = JSON.parse(JSON.stringify(gameState.value));
                     Object.values(connections).forEach(conn => {
-                        conn.send({ type: 'STATE_UPDATE', payload: stateObj });
+                        if (conn && conn.open) {
+                            try {
+                                conn.send({ type: 'STATE_UPDATE', payload: stateObj });
+                            } catch (e) {
+                                console.error('連線廣播錯誤:', e);
+                            }
+                        }
                     });
                 };
 
@@ -763,15 +768,19 @@
                 // --- STREAMING_CHUNK:遊戲核心邏輯 (房主端)... ---
                 
                 const forceStart = () => {
-                    if (!canHostStart.value) return;
+                    if (!canHostStart.value || gameState.value.status !== 'LOBBY') return;
+                    
+                    gameState.value.status = 'COUNTDOWN';
+                    screen.value = 'playing';
+                    checkScreenState();
                     
                     // 廣播進入倒數
                     Object.values(connections).forEach(conn => {
-                        conn.send({ type: 'START_COUNTDOWN' });
+                        if (conn && conn.open) {
+                            conn.send({ type: 'START_COUNTDOWN' });
+                        }
                     });
                     
-                    screen.value = 'playing';
-                    gameState.value.status = 'COUNTDOWN';
                     doClientCountdown(() => {
                         startGame();
                     });
@@ -783,7 +792,13 @@
                         countdownValue.value--;
                         if(countdownValue.value <= 0) {
                             clearInterval(iv);
-                            if(callback) callback();
+                            if(callback) {
+                                try {
+                                    callback();
+                                } catch (e) {
+                                    console.error('遊戲啟動發生錯誤:', e);
+                                }
+                            }
                         }
                     }, 1000);
                 };
@@ -836,7 +851,9 @@
                     gameState.value.direction = 1;
                     gameState.value.currentPlayerIndex = 0; 
                     
-                    addLog('system', `遊戲開始！起始牌為【${getColorName(firstCard.color)} ${firstCard.display}】`);
+                    addLog('system', `遊戲開始！起始牌為【${getColorName(firstCard.color)} ${firstCard.type}】`);
+                    
+                    gameState.value.status = 'PLAYING';
                     resetTurnTimer();
                     broadcastState();
                 };
