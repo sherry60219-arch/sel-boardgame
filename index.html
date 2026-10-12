@@ -1,0 +1,1185 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>情緒風暴 SEL - 線上桌遊</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- PeerJS for P2P Networking -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <!-- Font Awesome for Icons (Action Cards) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        uno: {
+                            red: '#ef4444',
+                            yellow: '#eab308',
+                            green: '#22c55e',
+                            blue: '#3b82f6',
+                            black: '#1f2937'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body { background-color: #064e3b; color: white; overflow: hidden; touch-action: manipulation; }
+        .game-board { background: radial-gradient(circle, #065f46 0%, #022c22 100%); }
+        
+        /* Card Styling */
+        .uno-card {
+            width: 80px;
+            height: 120px;
+            border-radius: 8px;
+            border: 4px solid white;
+            display: inline-flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            background-color: white; /* base for border */
+            user-select: none;
+        }
+        @media (min-width: 768px) {
+            .uno-card { width: 100px; height: 150px; border-radius: 12px; border-width: 6px; }
+        }
+        .uno-card:hover:not(.disabled) { transform: translateY(-10px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5); z-index: 50; }
+        .uno-card.disabled { filter: brightness(0.6); cursor: not-allowed; }
+        
+        .uno-card-inner {
+            width: 100%; height: 100%;
+            border-radius: 4px;
+            display: flex; justify-content: center; align-items: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .uno-card-inner::after {
+            content: ''; position: absolute; width: 150%; height: 150%;
+            background: rgba(255,255,255,0.15); border-radius: 50%;
+            transform: rotate(-45deg);
+        }
+        
+        /* Colors */
+        .card-red .uno-card-inner { background-color: #ef4444; }
+        .card-yellow .uno-card-inner { background-color: #eab308; }
+        .card-green .uno-card-inner { background-color: #22c55e; }
+        .card-blue .uno-card-inner { background-color: #3b82f6; }
+        .card-black .uno-card-inner { background-color: #1f2937; }
+        
+        /* Texts & Icons */
+        .card-center {
+            font-size: 3rem; font-weight: 900; color: white;
+            text-shadow: 2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+            z-index: 10;
+        }
+        .card-corner {
+            position: absolute; font-size: 1.2rem; font-weight: bold; color: white;
+            text-shadow: 1px 1px 0 #000; z-index: 10;
+        }
+        .corner-tl { top: 4px; left: 6px; }
+        .corner-br { bottom: 4px; right: 6px; transform: rotate(180deg); }
+        
+        .hand-container {
+            display: flex; justify-content: center;
+            gap: -40px; /* Overlap cards */
+            padding-top: 20px;
+        }
+        .hand-container > * { margin-left: -30px; }
+        .hand-container > *:first-child { margin-left: 0; }
+        
+        /* Animations */
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; }
+        .bounce-enter-active { animation: bounce-in 0.5s; }
+        @keyframes bounce-in {
+            0% { transform: scale(0); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+        
+        /* Scrollbar styling for chat/history */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 3px; }
+    </style>
+</head>
+<body id="app">
+
+    <!-- Screen: Lobby -->
+    <div v-if="screen === 'lobby'" class="min-h-screen flex items-center justify-center bg-gray-900 p-4 relative overflow-hidden">
+        <div class="absolute inset-0 opacity-20 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+CjxwYXRoIGQ9Ik0yMCAwbDIwIDIwdi0yMGgtMjB6TTIwIDQwbDIwLTIwaDIwdjIweiIgZmlsbD0iI2ZmZiIgZmlsbC1vcGFjaXR5PSIwLjA1Ii8+Cjwvc3ZnPg==')]"></div>
+        <div class="bg-gray-800 p-8 rounded-2xl shadow-2xl max-w-md w-full relative z-10 border border-gray-700">
+            <h1 class="text-3xl font-extrabold text-center mb-2 text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-blue-500">情緒風暴 SEL</h1>
+            <p class="text-center text-gray-400 mb-6 text-sm">自我覺察 × 同理心 × 牌卡對決</p>
+            
+            <div v-if="!peerId && !isConnecting" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">你的暱稱</label>
+                    <input v-model="playerName" type="text" maxlength="10" class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-green-500" placeholder="輸入暱稱...">
+                </div>
+                <div class="flex gap-4 pt-2">
+                    <button @click="createRoom" :disabled="!playerName.trim()" class="flex-1 bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white font-bold py-3 px-4 rounded-lg transition">建立房間 (房主)</button>
+                </div>
+                <div class="relative flex py-2 items-center">
+                    <div class="flex-grow border-t border-gray-600"></div>
+                    <span class="flex-shrink-0 mx-4 text-gray-500 text-sm">或</span>
+                    <div class="flex-grow border-t border-gray-600"></div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">輸入房間代碼加入</label>
+                    <div class="flex gap-2">
+                        <input v-model="joinRoomId" type="text" class="flex-1 px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500 uppercase" placeholder="如: A1B2">
+                        <button @click="joinRoom" :disabled="!playerName.trim() || !joinRoomId.trim()" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold py-2 px-4 rounded-lg transition">加入</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div v-else-if="isConnecting" class="text-center py-8">
+                <i class="fas fa-circle-notch fa-spin text-4xl text-green-500 mb-4"></i>
+                <p>連線中，請稍候...</p>
+            </div>
+
+            <div v-else class="space-y-4">
+                <div class="bg-gray-700 p-4 rounded-lg text-center">
+                    <p class="text-sm text-gray-300 mb-1">房間代碼 (提供給好友)</p>
+                    <h2 class="text-3xl font-mono font-bold text-white tracking-widest">{{ roomId }}</h2>
+                    <button @click="copyRoomId" class="mt-2 text-xs text-green-400 hover:text-green-300"><i class="fas fa-copy"></i> 複製代碼</button>
+                </div>
+                
+                <div>
+                    <h3 class="font-medium text-gray-300 mb-2 border-b border-gray-600 pb-1">已加入玩家 ({{ players.length }}/6)</h3>
+                    <ul class="space-y-2 mb-4 max-h-40 overflow-y-auto">
+                        <li v-for="p in players" :key="p.id" class="flex justify-between items-center bg-gray-700 p-2 rounded">
+                            <div class="flex items-center gap-2">
+                                <span v-if="p.isHost" class="text-yellow-400 text-xs" title="房主"><i class="fas fa-crown"></i></span>
+                                <span>{{ p.name }}</span>
+                                <span v-if="p.id === myId" class="text-xs bg-gray-600 px-1 rounded">(你)</span>
+                            </div>
+                            <span :class="p.isReady ? 'text-green-400' : 'text-gray-400'"><i class="fas" :class="p.isReady ? 'fa-check-circle' : 'fa-hourglass-half'"></i> {{ p.isReady ? '已準備' : '準備中' }}</span>
+                        </li>
+                    </ul>
+                </div>
+                
+                <div class="flex gap-2">
+                    <button @click="toggleReady" class="flex-1 font-bold py-3 px-4 rounded-lg transition" :class="isReady ? 'bg-orange-600 hover:bg-orange-500' : 'bg-green-600 hover:bg-green-500 text-white'">
+                        {{ isReady ? '取消準備' : '準備開始!' }}
+                    </button>
+                </div>
+                <p v-if="isHost" class="text-xs text-center text-gray-400">當所有人準備完畢(至少3人)，遊戲將自動開始。</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Screen: Game Board -->
+    <div v-else-if="screen === 'playing'" class="min-h-screen game-board flex flex-col relative pb-4">
+        
+        <!-- Header Info -->
+        <div class="flex justify-between items-center p-3 bg-black/30 backdrop-blur-sm border-b border-white/10 z-20">
+            <div class="flex gap-4 text-sm font-semibold text-gray-300">
+                <span><i class="fas fa-clock text-green-400"></i> 全局剩餘: {{ formatTime(globalTimeRemaining) }}</span>
+                <span class="text-xs px-2 py-1 bg-gray-800 rounded">房碼: {{ roomId }}</span>
+            </div>
+            <!-- Current Color Indicator -->
+            <div class="flex items-center gap-2">
+                <span class="text-sm font-bold">當前顏色:</span>
+                <div class="w-6 h-6 rounded-full border-2 border-white shadow" :style="{ backgroundColor: getColorCode(currentColor) }"></div>
+            </div>
+        </div>
+
+        <!-- Main Game Area -->
+        <div class="flex-1 flex flex-col justify-between relative overflow-hidden">
+            
+            <!-- Other Players (Top Area) -->
+            <div class="flex justify-center gap-2 sm:gap-6 pt-4 px-2 flex-wrap">
+                <div v-for="p in otherPlayers" :key="p.id" class="flex flex-col items-center bg-black/20 p-2 rounded-xl border border-white/10 transition" :class="{'ring-2 ring-green-400 bg-green-900/30': p.id === gameState.currentPlayerId}">
+                    <div class="flex items-center gap-1 mb-1">
+                        <span class="font-bold text-sm truncate max-w-[80px]">{{ p.name }}</span>
+                    </div>
+                    <div class="flex gap-[-5px]">
+                        <!-- Card backs -->
+                        <div class="w-8 h-12 bg-red-600 rounded border-2 border-white shadow flex items-center justify-center -ml-3 first:ml-0" v-for="n in Math.min(p.cardCount, 5)" :key="n">
+                            <span class="text-[8px] font-bold text-yellow-300 rotate-[-45deg]">SEL</span>
+                        </div>
+                        <span v-if="p.cardCount > 5" class="ml-1 text-xs font-bold">+{{p.cardCount - 5}}</span>
+                    </div>
+                    <div v-if="p.hasCalledCalm" class="text-[10px] bg-green-500 text-white px-1 mt-1 rounded">已平靜</div>
+                </div>
+            </div>
+
+            <!-- Center Table -->
+            <div class="flex-1 flex items-center justify-center gap-8 relative z-10">
+                
+                <!-- Deck -->
+                <div class="relative cursor-pointer hover:scale-105 transition" @click="drawCard">
+                    <!-- Stack effect -->
+                    <div class="w-[80px] h-[120px] md:w-[100px] md:h-[150px] bg-red-700 rounded-lg border-4 border-white absolute top-2 left-2 flex items-center justify-center brightness-75"><span class="font-bold text-yellow-300 rotate-[-45deg] opacity-50">SEL</span></div>
+                    <div class="w-[80px] h-[120px] md:w-[100px] md:h-[150px] bg-red-600 rounded-lg border-4 border-white relative shadow-xl flex items-center justify-center">
+                        <span class="font-extrabold text-2xl md:text-3xl text-yellow-300 rotate-[-45deg] drop-shadow-md">SEL</span>
+                    </div>
+                    <div v-if="isMyTurn" class="absolute -bottom-8 left-1/2 -translate-x-1/2 text-sm font-bold text-yellow-400 bg-black/50 px-2 rounded whitespace-nowrap animate-pulse">點擊抽牌</div>
+                </div>
+
+                <!-- Discard Pile -->
+                <div class="relative">
+                    <div v-if="discardPileTop" class="uno-card shadow-2xl" :class="getCardClass(discardPileTop)">
+                        <div class="uno-card-inner">
+                            <span class="card-corner corner-tl" v-html="getCardDisplay(discardPileTop, true)"></span>
+                            <span class="card-center" v-html="getCardDisplay(discardPileTop)"></span>
+                            <span class="card-corner corner-br" v-html="getCardDisplay(discardPileTop, true)"></span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Turn Direction & Timer Indicator -->
+                <div class="absolute inset-0 pointer-events-none flex items-center justify-center opacity-20">
+                    <i class="fas fa-sync-alt text-8xl" :class="{'fa-spin-reverse': gameState.direction === -1, 'fa-spin': gameState.direction === 1}"></i>
+                </div>
+            </div>
+
+            <!-- Preivous Share Highlight -->
+            <transition name="fade">
+                <div v-if="gameState.previousShare" class="mx-auto bg-black/60 backdrop-blur border border-white/20 p-3 rounded-lg max-w-lg w-full text-center mb-4 text-sm relative z-20">
+                    <p class="text-gray-400 text-xs mb-1">上一次情緒分享 (由 {{ getPlayerName(gameState.previousShare.playerId) }} 提供):</p>
+                    <p class="font-medium text-white italic">"{{ gameState.previousShare.text }}"</p>
+                </div>
+            </transition>
+
+            <!-- My Hand Area -->
+            <div class="relative bg-black/40 pt-4 pb-6 px-4 rounded-t-3xl border-t border-white/10 mt-auto shadow-[0_-10px_30px_rgba(0,0,0,0.5)] z-20">
+                <div class="flex justify-between items-end mb-2">
+                    <div class="flex flex-col">
+                        <span class="font-bold text-lg">{{ playerName }} (你)</span>
+                        <span class="text-sm" :class="isMyTurn ? 'text-green-400 animate-pulse font-bold' : 'text-gray-400'">
+                            {{ isMyTurn ? `換你出牌！ (${turnTimeRemaining}s)` : '等待其他玩家...' }}
+                        </span>
+                    </div>
+                    
+                    <!-- Action Buttons -->
+                    <div class="flex gap-2">
+                        <button v-if="canCallCatch" @click="catchUno" class="bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-4 rounded-full shadow-lg border-2 border-white animate-bounce text-sm">抓包！(罰2張)</button>
+                        <button v-if="canCallCalm" @click="callCalm" :disabled="iHaveCalledCalm" class="font-bold py-2 px-4 rounded-full shadow-lg border-2 border-white text-sm transition" :class="iHaveCalledCalm ? 'bg-gray-500 text-gray-300' : 'bg-green-500 hover:bg-green-400 text-white animate-pulse'">
+                            {{ iHaveCalledCalm ? '已平靜' : '喊出【平靜】!' }}
+                        </button>
+                    </div>
+                </div>
+
+                <div class="hand-container overflow-x-auto pb-4 custom-scrollbar">
+                    <div v-for="(card, index) in myCards" :key="card.id" 
+                         @click="playCard(card)"
+                         class="uno-card flex-shrink-0" 
+                         :class="[getCardClass(card), { 'disabled': !isMyTurn || (!isValidPlay(card) && isMyTurn) }]"
+                         :style="{'z-index': index}">
+                        <div class="uno-card-inner">
+                            <span class="card-corner corner-tl" v-html="getCardDisplay(card, true)"></span>
+                            <span class="card-center" v-html="getCardDisplay(card)"></span>
+                            <span class="card-corner corner-br" v-html="getCardDisplay(card, true)"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modals -->
+
+        <!-- 1. Share Modal (Input) -->
+        <div v-if="showShareModal" class="absolute inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+            <div class="bg-gray-800 p-6 rounded-2xl w-full max-w-md border border-gray-600 shadow-2xl bounce-enter-active">
+                <h3 class="text-xl font-bold mb-4 flex items-center gap-2">
+                    <div class="w-4 h-4 rounded-full" :style="{ backgroundColor: getColorCode(pendingCard.color !== 'black' ? pendingCard.color : chosenWildColor) }"></div>
+                    情緒分享任務
+                </h3>
+                
+                <div v-if="pendingCard.color === 'black'" class="mb-4 bg-gray-700 p-3 rounded text-sm">
+                    <p class="font-bold mb-2">請選擇接下來的顏色：</p>
+                    <div class="flex gap-2 justify-center">
+                        <button v-for="c in ['red', 'yellow', 'green', 'blue']" :key="c" @click="chosenWildColor = c" 
+                                class="w-10 h-10 rounded-full border-2 transition hover:scale-110" 
+                                :class="chosenWildColor === c ? 'border-white shadow-[0_0_10px_white]' : 'border-transparent'"
+                                :style="{ backgroundColor: getColorCode(c) }"></button>
+                    </div>
+                </div>
+
+                <div class="bg-blue-900/40 p-3 rounded-lg border border-blue-500/30 mb-4 text-sm leading-relaxed">
+                    <p class="text-blue-300 font-bold mb-1"><i class="fas fa-info-circle"></i> 提示：</p>
+                    <p v-html="getSharePrompt(pendingCard, chosenWildColor)"></p>
+                </div>
+
+                <textarea v-model="shareText" rows="4" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white mb-2 focus:outline-none focus:border-green-500" placeholder="在此輸入你的分享內容... (至少10個字)"></textarea>
+                <div class="flex justify-between items-center text-xs text-gray-400 mb-4">
+                    <span>字數: {{ shareText.length }} / 100</span>
+                    <span v-if="shareText.length < 10" class="text-red-400">請至少輸入10個字</span>
+                </div>
+
+                <div class="flex gap-3">
+                    <button @click="cancelPlay" class="flex-1 bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 rounded">取消出牌</button>
+                    <button @click="submitShare" :disabled="shareText.length < 10 || (pendingCard.color === 'black' && !chosenWildColor)" class="flex-1 bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white font-bold py-2 rounded">送出分享</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. Voting Modal (For other players) -->
+        <div v-if="gameState.status === 'VOTING' && gameState.currentSharing.playerId !== myId" class="absolute inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+            <div class="bg-gray-800 p-6 rounded-2xl w-full max-w-md border border-gray-600 shadow-2xl text-center bounce-enter-active">
+                <h3 class="text-lg font-bold text-gray-300 mb-2">聆聽時間</h3>
+                <p class="text-sm text-gray-400 mb-4">{{ getPlayerName(gameState.currentSharing.playerId) }} 正在分享：</p>
+                
+                <div class="bg-black/40 p-4 rounded-lg italic text-lg mb-6 border-l-4" :style="{ borderColor: getColorCode(gameState.currentSharing.card.color !== 'black' ? gameState.currentSharing.card.color : gameState.currentSharing.chosenColor) }">
+                    "{{ gameState.currentSharing.text }}"
+                </div>
+                
+                <p class="text-xs text-gray-400 mb-2">請給予真誠的回饋 ({{ votingTimeRemaining }}s)</p>
+                
+                <div class="flex gap-4 justify-center" v-if="!hasVoted">
+                    <button @click="submitVote('accept')" class="flex-1 flex flex-col items-center justify-center bg-green-900/60 hover:bg-green-700/80 border border-green-500/50 p-3 rounded-xl transition group">
+                        <span class="text-3xl mb-1 group-hover:scale-125 transition">💖</span>
+                        <span class="font-bold text-green-200">感謝分享 / 接納</span>
+                    </button>
+                    <button @click="submitVote('reject')" class="flex-1 flex flex-col items-center justify-center bg-yellow-900/60 hover:bg-yellow-700/80 border border-yellow-500/50 p-3 rounded-xl transition group">
+                        <span class="text-3xl mb-1 group-hover:scale-125 transition">🤔</span>
+                        <span class="font-bold text-yellow-200">偏離主題 / 請補充</span>
+                    </button>
+                </div>
+                <div v-else class="text-green-400 font-bold py-4">
+                    <i class="fas fa-check-circle"></i> 已送出回饋，等待其他人...
+                </div>
+            </div>
+        </div>
+        
+        <!-- Wait state for current player during voting -->
+        <div v-if="gameState.status === 'VOTING' && gameState.currentSharing.playerId === myId" class="absolute inset-0 bg-black/50 flex flex-col items-center justify-center z-50">
+             <i class="fas fa-spinner fa-spin text-4xl text-white mb-4"></i>
+             <p class="text-xl font-bold bg-black/70 px-4 py-2 rounded-lg">等待其他玩家給予回饋... ({{ votingTimeRemaining }}s)</p>
+        </div>
+
+        <!-- Notification Toast -->
+        <transition name="fade">
+            <div v-if="notification" class="absolute top-20 left-1/2 -translate-x-1/2 bg-yellow-500 text-black px-6 py-3 rounded-full font-bold shadow-xl z-50 flex items-center gap-2">
+                <i class="fas fa-bell"></i> {{ notification }}
+            </div>
+        </transition>
+
+    </div>
+
+    <!-- Screen: Game Over -->
+    <div v-else-if="screen === 'gameover'" class="min-h-screen bg-gray-900 flex items-center justify-center p-4 relative">
+        <!-- Confetti effect base -->
+        <div class="absolute inset-0 overflow-hidden pointer-events-none">
+            <div v-for="i in 50" :key="i" class="absolute w-2 h-2 rounded-full" 
+                 :style="{
+                    backgroundColor: ['#ef4444','#eab308','#22c55e','#3b82f6'][Math.floor(Math.random()*4)],
+                    left: Math.random() * 100 + '%',
+                    top: '-5%',
+                    animation: `fall ${Math.random() * 3 + 2}s linear infinite`,
+                    animationDelay: `${Math.random() * 2}s`
+                 }"></div>
+        </div>
+        <style>@keyframes fall { to { transform: translateY(110vh) rotate(360deg); } }</style>
+
+        <div class="bg-gray-800 p-8 rounded-2xl shadow-2xl max-w-lg w-full relative z-10 border border-yellow-500/30">
+            <h1 class="text-4xl font-extrabold text-center mb-2 text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">對局結束</h1>
+            <p class="text-center text-gray-300 mb-8">感謝大家的真誠分享！</p>
+            
+            <h2 class="text-xl font-bold text-white mb-4 border-b border-gray-600 pb-2">排行榜 (積分越低越好)</h2>
+            <ul class="space-y-3 mb-8">
+                <li v-for="(p, index) in sortedLeaderboard" :key="p.id" 
+                    class="flex justify-between items-center p-3 rounded-lg border"
+                    :class="index === 0 ? 'bg-yellow-900/50 border-yellow-500 text-yellow-300' : 'bg-gray-700 border-gray-600'">
+                    <div class="flex items-center gap-3">
+                        <span class="font-black text-lg w-6">{{ index + 1 }}</span>
+                        <span v-if="index === 0"><i class="fas fa-trophy text-yellow-400"></i></span>
+                        <span class="font-bold">{{ p.name }}</span>
+                    </div>
+                    <div class="flex gap-4 text-sm">
+                        <span>剩 {{ p.cards.length }} 張</span>
+                        <span class="font-bold w-12 text-right">{{ p.score }} 分</span>
+                    </div>
+                </li>
+            </ul>
+            
+            <button v-if="isHost" @click="resetToLobby" class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-4 rounded-lg transition">返回大廳重新開始</button>
+            <p v-else class="text-center text-gray-400 text-sm">等待房主重新開啟房間...</p>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted, watch } = Vue;
+
+        createApp({
+            setup() {
+                // Constants
+                const COLORS = ['red', 'yellow', 'green', 'blue'];
+                const TURN_TIME_LIMIT = 30; // seconds
+                const VOTE_TIME_LIMIT = 15; // seconds
+                const GLOBAL_TIME_LIMIT = 15 * 60; // 15 mins
+
+                // App State
+                const screen = ref('lobby'); // lobby, playing, gameover
+                const notification = ref('');
+                
+                // User & Peer Info
+                const playerName = ref('');
+                const myId = ref('');
+                const peerId = ref('');
+                const isHost = ref(false);
+                const roomId = ref('');
+                const joinRoomId = ref('');
+                const isConnecting = ref(false);
+                
+                // PeerJS objects
+                let peer = null;
+                let connToHost = null; // Client uses this
+                let connections = {}; // Host uses this to track clients
+
+                // Game State (Broadcasted by Host)
+                const gameStateTemplate = () => ({
+                    status: 'LOBBY', // LOBBY, PLAYING, VOTING, GAMEOVER
+                    players: [], // { id, name, isHost, isReady, hasCalledCalm, cards: [], score: 0 }
+                    deck: [],
+                    discardPile: [],
+                    currentColor: '',
+                    direction: 1, // 1 (cw) or -1 (ccw)
+                    currentPlayerIndex: 0,
+                    turnEndTime: 0,
+                    globalEndTime: 0,
+                    previousShare: null, // { playerId, text }
+                    currentSharing: null, // { playerId, card, chosenColor, text, votes: {} }
+                });
+                const gameState = ref(gameStateTemplate());
+
+                // Local State for Active Game
+                const shareText = ref('');
+                const showShareModal = ref(false);
+                const pendingCard = ref(null);
+                const chosenWildColor = ref('');
+                const hasVoted = ref(false);
+                
+                // Timers
+                const turnTimeRemaining = ref(0);
+                const votingTimeRemaining = ref(0);
+                const globalTimeRemaining = ref(0);
+                let timerInterval = null;
+
+                // --- Computed Properties ---
+                const myCards = computed(() => {
+                    const me = gameState.value.players.find(p => p.id === myId.value);
+                    return me ? me.cards : [];
+                });
+                
+                const otherPlayers = computed(() => {
+                    // Reorder players so current player is at bottom, others around
+                    const meIndex = gameState.value.players.findIndex(p => p.id === myId.value);
+                    if (meIndex === -1) return [];
+                    const others = [];
+                    for(let i = 1; i < gameState.value.players.length; i++) {
+                        let idx = (meIndex + i) % gameState.value.players.length;
+                        others.push({
+                            id: gameState.value.players[idx].id,
+                            name: gameState.value.players[idx].name,
+                            cardCount: gameState.value.players[idx].cards.length,
+                            hasCalledCalm: gameState.value.players[idx].hasCalledCalm
+                        });
+                    }
+                    return others;
+                });
+
+                const players = computed(() => gameState.value.players);
+                const isReady = computed(() => {
+                    const me = players.value.find(p => p.id === myId.value);
+                    return me ? me.isReady : false;
+                });
+                const currentPlayerId = computed(() => {
+                    if (gameState.value.players.length === 0) return null;
+                    return gameState.value.players[gameState.value.currentPlayerIndex].id;
+                });
+                const isMyTurn = computed(() => currentPlayerId.value === myId.value && gameState.value.status === 'PLAYING');
+                const discardPileTop = computed(() => {
+                    const pile = gameState.value.discardPile;
+                    return pile.length > 0 ? pile[pile.length - 1] : null;
+                });
+                const currentColor = computed(() => gameState.value.currentColor);
+
+                // Calm (UNO) Logic
+                const canCallCalm = computed(() => myCards.value.length === 1);
+                const iHaveCalledCalm = computed(() => {
+                    const me = players.value.find(p => p.id === myId.value);
+                    return me ? me.hasCalledCalm : false;
+                });
+                const canCallCatch = computed(() => {
+                    // check if anyone else has 1 card and hasn't called calm
+                    return players.value.some(p => p.id !== myId.value && p.cards.length === 1 && !p.hasCalledCalm);
+                });
+
+                const sortedLeaderboard = computed(() => {
+                    return [...gameState.value.players].sort((a, b) => a.score - b.score);
+                });
+
+                // --- Networking (PeerJS) ---
+                const initPeer = (idPrefix = '') => {
+                    isConnecting.value = true;
+                    // Generate random ID
+                    const id = idPrefix + Math.random().toString(36).substr(2, 4).toUpperCase();
+                    peer = new Peer(id);
+                    
+                    peer.on('open', (pid) => {
+                        peerId.value = pid;
+                        myId.value = pid;
+                        roomId.value = isHost.value ? pid : joinRoomId.value;
+                        isConnecting.value = false;
+                        
+                        if (isHost.value) {
+                            setupHost();
+                        } else {
+                            connectToHost();
+                        }
+                    });
+
+                    peer.on('error', (err) => {
+                        console.error(err);
+                        showNotification('連線發生錯誤: ' + err.type);
+                        isConnecting.value = false;
+                    });
+                };
+
+                const createRoom = () => {
+                    isHost.value = true;
+                    initPeer('R-'); // Room prefix
+                };
+
+                const joinRoom = () => {
+                    isHost.value = false;
+                    joinRoomId.value = joinRoomId.value.toUpperCase();
+                    initPeer();
+                };
+
+                const setupHost = () => {
+                    // Host adds self to game
+                    gameState.value.players.push({
+                        id: myId.value, name: playerName.value, isHost: true, isReady: false, hasCalledCalm: false, cards: [], score: 0
+                    });
+
+                    peer.on('connection', (conn) => {
+                        connections[conn.peer] = conn;
+                        
+                        conn.on('open', () => {
+                            // Request player info
+                            conn.send({ type: 'REQ_INFO' });
+                        });
+
+                        conn.on('data', (data) => {
+                            handleClientMessage(conn.peer, data);
+                        });
+
+                        conn.on('close', () => {
+                            // Player disconnected
+                            gameState.value.players = gameState.value.players.filter(p => p.id !== conn.peer);
+                            delete connections[conn.peer];
+                            broadcastState();
+                        });
+                    });
+                    
+                    // Host timer loop
+                    setInterval(() => {
+                        if (gameState.value.status === 'PLAYING') {
+                            const now = Date.now();
+                            if (now > gameState.value.turnEndTime) {
+                                // Auto draw if timeout
+                                processDraw(currentPlayerId.value);
+                                nextTurn();
+                            }
+                            if (now > gameState.value.globalEndTime) {
+                                calculateScoresAndEnd();
+                            }
+                        } else if (gameState.value.status === 'VOTING') {
+                             if (Date.now() > gameState.value.turnEndTime) {
+                                 // Auto resolve vote on timeout
+                                 resolveVote();
+                             }
+                        }
+                    }, 1000);
+                };
+
+                const connectToHost = () => {
+                    connToHost = peer.connect(roomId.value);
+                    
+                    connToHost.on('open', () => {
+                        // Send my info
+                        connToHost.send({ type: 'INFO', payload: { name: playerName.value } });
+                    });
+
+                    connToHost.on('data', (data) => {
+                        if (data.type === 'STATE_UPDATE') {
+                            gameState.value = data.payload;
+                            checkScreenState();
+                        } else if (data.type === 'NOTIFICATION') {
+                            showNotification(data.payload);
+                        } else if (data.type === 'REJECTED_SHARE') {
+                            // Re-open share modal
+                            showNotification("多數玩家認為內容偏離主題，請再試著分享一次！");
+                            showShareModal.value = true;
+                            shareText.value = '';
+                        }
+                    });
+                };
+
+                // Host logic: Handle incoming messages from clients
+                const handleClientMessage = (peerId, data) => {
+                    const pIndex = gameState.value.players.findIndex(p => p.id === peerId);
+                    
+                    switch (data.type) {
+                        case 'INFO':
+                            if (pIndex === -1 && gameState.value.status === 'LOBBY' && gameState.value.players.length < 6) {
+                                gameState.value.players.push({
+                                    id: peerId, name: data.payload.name, isHost: false, isReady: false, hasCalledCalm: false, cards: [], score: 0
+                                });
+                                broadcastState();
+                            }
+                            break;
+                        case 'TOGGLE_READY':
+                            if (pIndex !== -1) {
+                                gameState.value.players[pIndex].isReady = !gameState.value.players[pIndex].isReady;
+                                broadcastState();
+                                checkAutoStart();
+                            }
+                            break;
+                        case 'PLAY_CARD':
+                            if (currentPlayerId.value === peerId && gameState.value.status === 'PLAYING') {
+                                handleCardPlayInit(peerId, data.payload.card);
+                            }
+                            break;
+                        case 'DRAW_CARD':
+                            if (currentPlayerId.value === peerId && gameState.value.status === 'PLAYING') {
+                                processDraw(peerId);
+                                nextTurn();
+                            }
+                            break;
+                        case 'SUBMIT_SHARE':
+                            if (currentPlayerId.value === peerId && gameState.value.status === 'PLAYING') {
+                                startVotingPhase(peerId, data.payload);
+                            }
+                            break;
+                        case 'SUBMIT_VOTE':
+                            if (gameState.value.status === 'VOTING') {
+                                registerVote(peerId, data.payload.vote);
+                            }
+                            break;
+                        case 'CALL_CALM':
+                            if (pIndex !== -1) {
+                                gameState.value.players[pIndex].hasCalledCalm = true;
+                                broadcastState();
+                                sendNotification(peerId, "喊出平靜！", true);
+                            }
+                            break;
+                        case 'CATCH_UNO':
+                            handleCatchUno(peerId);
+                            break;
+                    }
+                };
+
+                const broadcastState = () => {
+                    if (!isHost.value) return;
+                    const stateObj = JSON.parse(JSON.stringify(gameState.value)); // Deep copy to avoid proxy issues
+                    
+                    // Local state update
+                    gameState.value = stateObj;
+                    checkScreenState();
+
+                    // Send to clients
+                    Object.values(connections).forEach(conn => {
+                        conn.send({ type: 'STATE_UPDATE', payload: stateObj });
+                    });
+                };
+
+                const sendNotification = (triggerId, msg, broadcast = false) => {
+                    const name = getPlayerName(triggerId);
+                    const fullMsg = broadcast ? `${name} ${msg}` : msg;
+                    if (isHost.value) showNotification(fullMsg);
+                    Object.values(connections).forEach(conn => {
+                        conn.send({ type: 'NOTIFICATION', payload: fullMsg });
+                    });
+                };
+
+                const notifyClient = (clientId, type, payload) => {
+                    if (clientId === myId.value) {
+                         if(type === 'REJECTED_SHARE') {
+                             showNotification("多數玩家認為內容偏離主題，請再試著分享一次！");
+                             showShareModal.value = true;
+                             shareText.value = '';
+                         }
+                    } else if (connections[clientId]) {
+                        connections[clientId].send({ type, payload });
+                    }
+                }
+
+                // --- Game Engine (Host Only) ---
+                const generateDeck = () => {
+                    let deck = [];
+                    let idCount = 0;
+                    COLORS.forEach(color => {
+                        // 0 (1 each)
+                        deck.push({ id: `c${idCount++}`, color, type: '0', display: '0' });
+                        for (let i = 1; i <= 9; i++) {
+                            // 1-9 (2 each)
+                            deck.push({ id: `c${idCount++}`, color, type: String(i), display: String(i) });
+                            deck.push({ id: `c${idCount++}`, color, type: String(i), display: String(i) });
+                        }
+                        // Action cards (2 each)
+                        for(let i=0; i<2; i++){
+                            deck.push({ id: `c${idCount++}`, color, type: 'skip', display: '<i class="fas fa-ban"></i>' });
+                            deck.push({ id: `c${idCount++}`, color, type: 'reverse', display: '<i class="fas fa-exchange-alt"></i>' });
+                            deck.push({ id: `c${idCount++}`, color, type: 'draw2', display: '+2' });
+                        }
+                    });
+                    // Wilds (4 each)
+                    for(let i=0; i<4; i++){
+                        deck.push({ id: `c${idCount++}`, color: 'black', type: 'wild', display: 'WILD' });
+                        deck.push({ id: `c${idCount++}`, color: 'black', type: 'draw4', display: '+4' });
+                    }
+                    return deck.sort(() => Math.random() - 0.5);
+                };
+
+                const checkAutoStart = () => {
+                    if (!isHost.value) return;
+                    if (gameState.value.players.length >= 3 && gameState.value.players.every(p => p.isReady)) {
+                        startGame();
+                    }
+                };
+
+                const startGame = () => {
+                    gameState.value.deck = generateDeck();
+                    gameState.value.discardPile = [];
+                    gameState.value.status = 'PLAYING';
+                    gameState.value.globalEndTime = Date.now() + GLOBAL_TIME_LIMIT * 1000;
+                    
+                    // Deal 7 cards to each
+                    gameState.value.players.forEach(p => {
+                        p.cards = gameState.value.deck.splice(0, 7);
+                        p.hasCalledCalm = false;
+                        p.score = 0;
+                    });
+
+                    // First card (must be color/number)
+                    let firstCard;
+                    do {
+                        firstCard = gameState.value.deck.pop();
+                        if (firstCard.color === 'black' || ['skip', 'reverse', 'draw2'].includes(firstCard.type)) {
+                            gameState.value.deck.unshift(firstCard); // put back at bottom
+                            firstCard = null;
+                        }
+                    } while (!firstCard);
+                    
+                    gameState.value.discardPile.push(firstCard);
+                    gameState.value.currentColor = firstCard.color;
+                    gameState.value.direction = 1;
+                    gameState.value.currentPlayerIndex = 0; // Randomize later if needed
+                    
+                    resetTurnTimer();
+                    broadcastState();
+                };
+
+                const resetTurnTimer = () => {
+                    gameState.value.turnEndTime = Date.now() + TURN_TIME_LIMIT * 1000;
+                };
+
+                const processDraw = (pId, count = 1) => {
+                    const pIndex = gameState.value.players.findIndex(p => p.id === pId);
+                    if (pIndex === -1) return;
+                    
+                    for (let i = 0; i < count; i++) {
+                        if (gameState.value.deck.length === 0) {
+                            // Reshuffle discard pile (keep top card)
+                            const top = gameState.value.discardPile.pop();
+                            gameState.value.deck = gameState.value.discardPile.sort(() => Math.random() - 0.5);
+                            gameState.value.discardPile = [top];
+                        }
+                        if (gameState.value.deck.length > 0) {
+                            gameState.value.players[pIndex].cards.push(gameState.value.deck.pop());
+                        }
+                    }
+                    // Reset calm flag if cards > 1
+                    if (gameState.value.players[pIndex].cards.length > 1) {
+                         gameState.value.players[pIndex].hasCalledCalm = false;
+                    }
+                };
+
+                const getNextPlayerIndex = (step = 1) => {
+                    let nextIdx = gameState.value.currentPlayerIndex + (step * gameState.value.direction);
+                    const numPlayers = gameState.value.players.length;
+                    return (nextIdx % numPlayers + numPlayers) % numPlayers; // handle negative
+                };
+
+                const nextTurn = (step = 1) => {
+                    gameState.value.currentPlayerIndex = getNextPlayerIndex(step);
+                    resetTurnTimer();
+                    broadcastState();
+                };
+
+                // SEL Logic Step 1: Initialize play, wait for share
+                const handleCardPlayInit = (peerId, card) => {
+                    // Check if it's a valid play before opening modal (safety check on host)
+                    if (!isValidPlayRule(card, gameState.value.discardPile[gameState.value.discardPile.length-1], gameState.value.currentColor)) return;
+                    
+                    // Host acknowledges intent to play, tells client to open modal?
+                    // Actually, client opens modal locally. Host just needs to receive SUBMIT_SHARE.
+                };
+
+                // SEL Logic Step 2: Receive text, start voting
+                const startVotingPhase = (peerId, { card, text, chosenColor }) => {
+                    gameState.value.status = 'VOTING';
+                    gameState.value.currentSharing = {
+                        playerId: peerId,
+                        card: card,
+                        chosenColor: chosenColor,
+                        text: text,
+                        votes: { accept: 0, reject: 0, voters: [] }
+                    };
+                    gameState.value.turnEndTime = Date.now() + VOTE_TIME_LIMIT * 1000; // 15s to vote
+                    broadcastState();
+                };
+
+                // SEL Logic Step 3: Tally votes
+                const registerVote = (peerId, voteType) => {
+                    const shareData = gameState.value.currentSharing;
+                    if (shareData.playerId === peerId || shareData.votes.voters.includes(peerId)) return; // Can't vote on own / twice
+                    
+                    shareData.votes.voters.push(peerId);
+                    shareData.votes[voteType]++;
+                    
+                    // Check if everyone (except sharing player) voted
+                    if (shareData.votes.voters.length >= gameState.value.players.length - 1) {
+                        resolveVote();
+                    } else {
+                        broadcastState(); // Update others
+                    }
+                };
+
+                // SEL Logic Step 4: Resolve
+                const resolveVote = () => {
+                    const shareData = gameState.value.currentSharing;
+                    const pIndex = gameState.value.players.findIndex(p => p.id === shareData.playerId);
+                    
+                    // Accept logic: tie goes to accept, or 0 voters goes to accept
+                    let accepted = true;
+                    if (shareData.votes.voters.length > 0 && shareData.votes.reject > shareData.votes.accept) {
+                        accepted = false;
+                    }
+
+                    if (accepted) {
+                        // Apply Card Effect
+                        const card = shareData.card;
+                        // Remove card from hand
+                        const cardIdx = gameState.value.players[pIndex].cards.findIndex(c => c.id === card.id);
+                        if (cardIdx !== -1) gameState.value.players[pIndex].cards.splice(cardIdx, 1);
+                        
+                        gameState.value.discardPile.push(card);
+                        gameState.value.currentColor = card.color === 'black' ? shareData.chosenColor : card.color;
+                        
+                        // Save previous share for context
+                        gameState.value.previousShare = {
+                            playerId: shareData.playerId,
+                            text: shareData.text
+                        };
+
+                        // Check Win condition before passing turn
+                        if (gameState.value.players[pIndex].cards.length === 0) {
+                             calculateScoresAndEnd();
+                             return;
+                        }
+
+                        // Apply special effects
+                        let step = 1;
+                        if (card.type === 'skip') {
+                            step = 2;
+                        } else if (card.type === 'reverse') {
+                            gameState.value.direction *= -1;
+                            if (gameState.value.players.length === 2) step = 2; // Reverse acts like skip in 2-player
+                        } else if (card.type === 'draw2') {
+                            processDraw(gameState.value.players[getNextPlayerIndex(1)].id, 2);
+                            step = 2; // Skip next person after drawing
+                        } else if (card.type === 'draw4') {
+                            processDraw(gameState.value.players[getNextPlayerIndex(1)].id, 4);
+                            step = 2;
+                        }
+                        
+                        gameState.value.status = 'PLAYING';
+                        gameState.value.currentSharing = null;
+                        nextTurn(step);
+                    } else {
+                        // Rejected! Tell player to try again
+                        gameState.value.status = 'PLAYING'; // Return to play state but keep turn
+                        resetTurnTimer();
+                        broadcastState();
+                        notifyClient(shareData.playerId, 'REJECTED_SHARE', null);
+                    }
+                };
+
+                const handleCatchUno = (callerId) => {
+                    let caughtAnyone = false;
+                    gameState.value.players.forEach(p => {
+                        if (p.id !== callerId && p.cards.length === 1 && !p.hasCalledCalm) {
+                            processDraw(p.id, 2);
+                            sendNotification(p.id, `忘記喊平靜，被 ${getPlayerName(callerId)} 抓包，罰抽兩張！`);
+                            caughtAnyone = true;
+                        }
+                    });
+                    if (caughtAnyone) broadcastState();
+                };
+
+                // End Game & Scoring
+                const calculateScoresAndEnd = () => {
+                    gameState.value.status = 'GAMEOVER';
+                    
+                    gameState.value.players.forEach(p => {
+                        let score = 0;
+                        p.cards.forEach(c => {
+                            if (c.color === 'black') score += 50;
+                            else if (['skip', 'reverse', 'draw2'].includes(c.type)) score += 20;
+                            else score += parseInt(c.type);
+                        });
+                        p.score = score;
+                    });
+                    
+                    broadcastState();
+                };
+
+
+                // --- Client Actions (Emits) ---
+                
+                const toggleReady = () => {
+                    if (isHost.value) {
+                        const me = gameState.value.players.find(p => p.id === myId.value);
+                        me.isReady = !me.isReady;
+                        broadcastState();
+                        checkAutoStart();
+                    } else {
+                        connToHost.send({ type: 'TOGGLE_READY' });
+                    }
+                };
+
+                const drawCard = () => {
+                    if (!isMyTurn.value) return;
+                    if (isHost.value) {
+                        processDraw(myId.value);
+                        nextTurn();
+                    } else {
+                        connToHost.send({ type: 'DRAW_CARD' });
+                    }
+                };
+
+                // Validate rule locally before popping UI
+                const isValidPlayRule = (card, topCard, curColor) => {
+                    if (card.color === 'black') return true;
+                    if (card.color === curColor) return true;
+                    if (topCard && card.type === topCard.type) return true;
+                    return false;
+                };
+
+                const isValidPlay = (card) => {
+                    return isValidPlayRule(card, discardPileTop.value, currentColor.value);
+                };
+
+                const playCard = (card) => {
+                    if (!isMyTurn.value || !isValidPlay(card)) return;
+                    
+                    // Open modal locally
+                    pendingCard.value = card;
+                    chosenWildColor.value = '';
+                    shareText.value = '';
+                    showShareModal.value = true;
+                };
+
+                const cancelPlay = () => {
+                    showShareModal.value = false;
+                    pendingCard.value = null;
+                };
+
+                const submitShare = () => {
+                    if (shareText.value.length < 10) return;
+                    if (pendingCard.value.color === 'black' && !chosenWildColor.value) return;
+
+                    const payload = {
+                        card: pendingCard.value,
+                        text: shareText.value,
+                        chosenColor: chosenWildColor.value
+                    };
+
+                    showShareModal.value = false;
+
+                    if (isHost.value) {
+                        startVotingPhase(myId.value, payload);
+                    } else {
+                        connToHost.send({ type: 'SUBMIT_SHARE', payload });
+                    }
+                };
+
+                const submitVote = (vote) => {
+                    hasVoted.value = true;
+                    if (isHost.value) {
+                        registerVote(myId.value, vote);
+                    } else {
+                        connToHost.send({ type: 'SUBMIT_VOTE', payload: { vote } });
+                    }
+                };
+
+                const callCalm = () => {
+                    if (isHost.value) {
+                        const me = gameState.value.players.find(p => p.id === myId.value);
+                        me.hasCalledCalm = true;
+                        broadcastState();
+                        sendNotification(myId.value, "喊出了平靜！", true);
+                    } else {
+                        connToHost.send({ type: 'CALL_CALM' });
+                    }
+                };
+
+                const catchUno = () => {
+                    if (isHost.value) {
+                        handleCatchUno(myId.value);
+                    } else {
+                         connToHost.send({ type: 'CATCH_UNO' });
+                    }
+                };
+
+                const resetToLobby = () => {
+                    if (!isHost.value) return;
+                    gameState.value.status = 'LOBBY';
+                    gameState.value.players.forEach(p => { p.isReady = false; p.cards = []; p.score = 0; });
+                    broadcastState();
+                };
+
+                // --- Helpers & UI Timers ---
+                
+                const checkScreenState = () => {
+                    if (gameState.value.status === 'LOBBY') screen.value = 'lobby';
+                    else if (gameState.value.status === 'GAMEOVER') screen.value = 'gameover';
+                    else screen.value = 'playing';
+
+                    if (gameState.value.status !== 'VOTING') {
+                        hasVoted.value = false;
+                    }
+                };
+
+                const updateTimers = () => {
+                    const now = Date.now();
+                    turnTimeRemaining.value = Math.max(0, Math.ceil((gameState.value.turnEndTime - now) / 1000));
+                    votingTimeRemaining.value = turnTimeRemaining.value; // Reuse turn end time logic
+                    globalTimeRemaining.value = Math.max(0, Math.ceil((gameState.value.globalEndTime - now) / 1000));
+                };
+
+                onMounted(() => {
+                    timerInterval = setInterval(updateTimers, 500);
+                });
+
+                const formatTime = (secs) => {
+                    const m = Math.floor(secs / 60);
+                    const s = secs % 60;
+                    return `${m}:${s.toString().padStart(2, '0')}`;
+                };
+
+                const getPlayerName = (id) => {
+                    const p = gameState.value.players.find(x => x.id === id);
+                    return p ? p.name : '未知玩家';
+                };
+
+                const showNotification = (msg) => {
+                    notification.value = msg;
+                    setTimeout(() => { notification.value = ''; }, 3000);
+                };
+
+                const copyRoomId = () => {
+                    navigator.clipboard.writeText(roomId.value);
+                    showNotification("房間代碼已複製！");
+                };
+
+                const getColorCode = (colorStr) => {
+                    const map = { red: '#ef4444', yellow: '#eab308', green: '#22c55e', blue: '#3b82f6', black: '#1f2937' };
+                    return map[colorStr] || '#fff';
+                };
+
+                const getCardClass = (card) => {
+                    if (!card) return '';
+                    return `card-${card.color}`;
+                };
+
+                const getCardDisplay = (card, isCorner = false) => {
+                    if (!card) return '';
+                    if (isCorner) {
+                        // Simplified icon for corner
+                        if (card.type === 'skip') return '<i class="fas fa-ban text-xs"></i>';
+                        if (card.type === 'reverse') return '<i class="fas fa-exchange-alt text-xs"></i>';
+                        if (card.type === 'draw2') return '+2';
+                        if (card.type === 'wild') return '<i class="fas fa-asterisk text-xs"></i>';
+                        if (card.type === 'draw4') return '+4';
+                        return card.display;
+                    }
+                    return card.display;
+                };
+
+                // SEL Prompts Dictionary
+                const getSharePrompt = (card, chosenColor) => {
+                    if (!card) return '';
+                    const emotionMap = {
+                        red: '<span class="text-red-400 font-bold">生氣、憤怒或煩躁</span>',
+                        yellow: '<span class="text-yellow-400 font-bold">開心、期待或充滿成就感</span>',
+                        blue: '<span class="text-blue-400 font-bold">難過、沮喪或有些低落</span>',
+                        green: '<span class="text-green-400 font-bold">討厭、反感或受不了</span>'
+                    };
+                    
+                    const targetColor = card.color === 'black' ? chosenColor : card.color;
+                    const prevPName = gameState.value.previousShare ? getPlayerName(gameState.value.previousShare.playerId) : '前一位玩家';
+
+                    if (!isNaN(card.type)) {
+                         return `請分享一個近期讓你感到 ${emotionMap[targetColor]} 的真實事件。`;
+                    }
+                    
+                    // If action card played FIRST (no previous share), fallback to basic sharing
+                    if (!gameState.value.previousShare && isNaN(card.type)) {
+                         return `因為你是第一位出牌，請直接分享一個讓你感到 ${targetColor ? emotionMap[targetColor] : '強烈情緒'} 的事件。`;
+                    }
+
+                    switch (card.type) {
+                        case 'skip':
+                            return `針對 ${prevPName} 的事件，請提供一個情緒調解策略（例如：深呼吸、喝杯水...）。`;
+                        case 'reverse':
+                            return `針對 ${prevPName} 的事件，請用「我感到...因為...我希望...」的句型來表達我-訊息。`;
+                        case 'draw2':
+                            return `展現低層次同理心：請反映 ${prevPName} 表面的情緒與事件。<br><span class="text-xs text-blue-200">範例：「你因為...事情，心裡覺得很...」</span>`;
+                        case 'draw4':
+                            return `展現高層次同理心：請推測並點出 ${prevPName} 情緒背後更深層的感受或原因。<br><span class="text-xs text-blue-200">範例：「除了...之外，你是不是也覺得自己...」</span>`;
+                        case 'wild':
+                            return `負責任的決定：請提出一個具建設性的行動方案，說明如何將 ${prevPName} 的情緒，轉化為 <span class="font-bold underline">${targetColor}</span> 對應的情緒。`;
+                    }
+                    return '';
+                };
+
+                return {
+                    screen, notification, playerName, myId, peerId, isHost, roomId, joinRoomId, isConnecting,
+                    gameState, myCards, otherPlayers, players, isReady, isMyTurn, discardPileTop, currentColor,
+                    turnTimeRemaining, votingTimeRemaining, globalTimeRemaining,
+                    canCallCalm, iHaveCalledCalm, canCallCatch, sortedLeaderboard,
+                    showShareModal, shareText, pendingCard, chosenWildColor, hasVoted,
+                    createRoom, joinRoom, copyRoomId, toggleReady, drawCard, playCard, cancelPlay, submitShare,
+                    submitVote, callCalm, catchUno, resetToLobby, formatTime, getColorCode, getCardClass, getCardDisplay,
+                    getPlayerName, getSharePrompt
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
